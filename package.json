@@ -1,0 +1,18 @@
+{
+  "name": "agriconnect",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AgriConnect - Real-Time Farmer-to-Buyer Marketplace and Agricultural Logistics Platform (MERN Stack)",
+  "scripts": {
+    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "seed": "npm run seed --prefix backend",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev": "concurrently -n BACKEND,FRONTEND -c green,cyan \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "start:backend": "npm start --prefix backend",
+    "build:frontend": "npm run build --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
