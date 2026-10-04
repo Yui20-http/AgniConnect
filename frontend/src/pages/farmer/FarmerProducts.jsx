@@ -35,7 +35,9 @@ const FarmerProducts = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [bulkPricing, setBulkPricing] = useState([]);
   const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -59,7 +61,9 @@ const FarmerProducts = () => {
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
+    setBulkPricing([]);
     setImageFile(null);
+    setImagePreview('');
     setModalOpen(true);
   };
 
@@ -78,7 +82,9 @@ const FarmerProducts = () => {
       location: p.location || '',
       isAvailable: p.isAvailable,
     });
+    setBulkPricing((p.bulkPricing || []).map((tier) => ({ minQty: tier.minQty, pricePerUnit: tier.pricePerUnit })));
     setImageFile(null);
+    setImagePreview('');
     setModalOpen(true);
   };
 
@@ -88,6 +94,7 @@ const FarmerProducts = () => {
       setSaving(true);
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      fd.append('bulkPricing', JSON.stringify(bulkPricing));
       if (imageFile) fd.append('image', imageFile);
 
       if (editing) {
@@ -314,10 +321,40 @@ const FarmerProducts = () => {
                 className="input"
               />
             </div>
+            <div className="sm:col-span-2 rounded-xl border border-gray-200 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Wholesale pricing</p>
+                  <p className="text-xs text-gray-500">Offer a lower per-unit price above a quantity threshold.</p>
+                </div>
+                <button type="button" onClick={() => setBulkPricing((tiers) => [...tiers, { minQty: '', pricePerUnit: '' }])} className="btn-secondary !px-3 !py-2 text-xs">
+                  <Plus className="h-3.5 w-3.5" /> Add tier
+                </button>
+              </div>
+              {bulkPricing.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {bulkPricing.map((tier, index) => (
+                    <div key={index} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+                      <label className="text-xs text-gray-600">Minimum quantity
+                        <input type="number" min="1" step="1" required value={tier.minQty} onChange={(event) => setBulkPricing((tiers) => tiers.map((row, rowIndex) => rowIndex === index ? { ...row, minQty: event.target.value } : row))} className="input mt-1" placeholder="e.g. 10" />
+                      </label>
+                      <label className="text-xs text-gray-600">Price per {form.unit} (₹)
+                        <input type="number" min="0" step="0.01" required value={tier.pricePerUnit} onChange={(event) => setBulkPricing((tiers) => tiers.map((row, rowIndex) => rowIndex === index ? { ...row, pricePerUnit: event.target.value } : row))} className="input mt-1" placeholder="e.g. 45" />
+                      </label>
+                      <button type="button" onClick={() => setBulkPricing((tiers) => tiers.filter((_, rowIndex) => rowIndex !== index))} className="mb-1 rounded-lg p-2 text-red-600 hover:bg-red-50" aria-label="Remove wholesale tier">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div>
-              <label className="label">Harvest Date</label>
+              <label className="label">Harvest Date {form.isPreOrder ? '*' : ''}</label>
               <input
                 type="date"
+                min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)}
+                required={form.isPreOrder}
                 value={form.harvestDate}
                 onChange={(e) => setForm({ ...form, harvestDate: e.target.value })}
                 className="input"
@@ -345,13 +382,21 @@ const FarmerProducts = () => {
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="label">Product Image</label>
+              <label className="label">Product Image (upload a photo)</label>
               <input
                 type="file"
-                accept="image/*"
-                onChange={(e) => setImageFile(e.target.files[0])}
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setImageFile(file);
+                  setImagePreview(file ? URL.createObjectURL(file) : '');
+                }}
                 className="input file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-primary-50 file:text-primary-700 file:text-sm file:font-medium"
               />
+              <p className="mt-1 text-xs text-gray-500">Images up to 5 MB. Cloudinary is used when backend credentials are configured.</p>
+              {(imagePreview || editing?.image) && (
+                <img src={imagePreview || editing.image} alt="Product preview" className="mt-3 h-28 w-28 rounded-lg object-cover" />
+              )}
               {editing?.image && !imageFile && (
                 <p className="text-xs text-gray-400 mt-1">Leave empty to keep the current image.</p>
               )}

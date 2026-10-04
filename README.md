@@ -489,6 +489,11 @@ Follow these steps to verify the complete end-to-end flow:
 | `JWT_EXPIRES_IN` | Token lifetime | `7d` |
 | `PORT` | Backend port | `5000` |
 | `CLIENT_URL` | Frontend URL for CORS | `http://localhost:5173` |
+| `SMTP_HOST` | Outgoing email server | `smtp.gmail.com` |
+| `SMTP_PORT` | SMTP TLS port | `587` |
+| `SMTP_USER` | Mailbox/login used to send password-reset emails | (required for email) |
+| `SMTP_PASS` | Mailbox SMTP password / provider app password | (required; keep private) |
+| `SMTP_FROM` | Verified sender display address | Defaults to `SMTP_USER` |
 | `ADMIN_NAME` | Seeded admin name | `AgriConnect Admin` |
 | `ADMIN_EMAIL` | Seeded admin email | `admin@agriconnect.com` |
 | `ADMIN_PHONE` | Seeded admin phone | `9000000000` |
@@ -501,6 +506,16 @@ Follow these steps to verify the complete end-to-end flow:
 | `VITE_API_TARGET` | Backend URL for the dev proxy | `http://localhost:5000` |
 | `VITE_API_URL` | Optional full API URL | (uses `/api` proxy) |
 | `VITE_SOCKET_URL` | Optional Socket.IO URL | (uses same origin) |
+
+### Enable password-reset emails
+
+1. Copy `backend/.env.example` to `backend/.env` if you have not already done so.
+2. For Gmail, enable 2-Step Verification on the mailbox, then create a Google **App Password**. Use that generated password as `SMTP_PASS`; do not use your normal Gmail password.
+3. In `backend/.env`, set `SMTP_USER` to the sending Gmail address and `SMTP_PASS` to its App Password. `SMTP_HOST=smtp.gmail.com` and `SMTP_PORT=587` are the standard Gmail SMTP settings. Leave `SMTP_FROM` empty to send from the authenticated mailbox, or set it to an address Gmail allows that account to send as.
+4. Save `backend/.env` locally and restart the backend. Do not commit this file or paste secrets into chat.
+5. Restart the backend. Password-reset emails will use this mailbox. Registration and sign-in do not require email verification; the email address entered at registration is stored in MongoDB and used for login.
+
+For other providers, use their official SMTP hostname, port, and credential requirements. SMTP values must be configured on the backend; setting them in `frontend/.env` will not send email.
 
 ---
 
@@ -520,6 +535,9 @@ Uploaded images are served from `/uploads`. Ensure the backend is running and th
 
 **❌ Real-time notifications don't appear**
 Socket.IO connects through the Vite proxy (`/socket.io`). Make sure both servers are running and you restarted the frontend after any config change.
+
+**❌ Password-reset email doesn't arrive**
+Check that `SMTP_USER` and `SMTP_PASS` are configured in `backend/.env`, then restart the backend. For Gmail, use an App Password with 2-Step Verification enabled. Check Spam/Junk and confirm `SMTP_FROM` is either blank or a sender permitted by your mail provider. Email verification is disabled; users sign in with the email stored in MongoDB and their password.
 
 **❌ `npm run seed` fails**
 Make sure MongoDB is running and `MONGODB_URI` is correct. The seed script clears existing demo data before inserting fresh data.

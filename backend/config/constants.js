@@ -68,8 +68,6 @@ const NOTIFICATION_TYPES = {
   PRICE: 'price',
 };
 
-// Flat delivery fee (in ₹) applied to every order for the demo.
-const DELIVERY_FEE = 50;
 const PLATFORM_COMMISSION_RATE = 6;
 
 module.exports = {
@@ -81,6 +79,5 @@ module.exports = {
   PAYMENT_STATUS,
   DELIVERY_STATUS,
   NOTIFICATION_TYPES,
-  DELIVERY_FEE,
   PLATFORM_COMMISSION_RATE,
 };

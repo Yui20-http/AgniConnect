@@ -78,13 +78,42 @@ const getFarmerProfile = asyncHandler(async (req, res) => {
   res.json({ success: true, data: farmer });
 });
 
+const submitFarmerKyc = asyncHandler(async (req, res) => {
+  const { documentType, lastFour } = req.body || {};
+  if (!documentType || !lastFour || !/^\d{4}$/.test(String(lastFour))) {
+    res.status(400);
+    throw new Error('Choose an identity document type and enter its last four digits');
+  }
+  const farmer = await User.findOne({ _id: req.user._id, role: 'farmer' });
+  if (!farmer) {
+    res.status(404);
+    throw new Error('Farmer account not found');
+  }
+  farmer.kycDocumentType = String(documentType).slice(0, 40);
+  farmer.kycLastFour = String(lastFour);
+  farmer.kycStatus = 'pending';
+  farmer.kycSubmittedAt = new Date();
+  farmer.kycReviewedAt = null;
+  farmer.kycReviewNote = '';
+  await farmer.save();
+  res.json({ success: true, message: 'Verification request submitted for admin review', data: farmer });
+});
+
+const getFeaturedFarmers = asyncHandler(async (_req, res) => {
+  const farmers = await User.find({ role: 'farmer', isFeatured: true, kycStatus: 'verified', isActive: true })
+    .select('name farmName farmLocation location profileImage rating createdAt')
+    .sort({ rating: -1, name: 1 })
+    .limit(12);
+  res.json({ success: true, data: farmers });
+});
+
 /**
  * @desc    List all delivery partners available for assignment
  * @route   GET /api/users/delivery-partners
  * @access  Private
  */
 const getDeliveryPartners = asyncHandler(async (req, res) => {
-  const partners = await User.find({ role: 'delivery' }).select(
+  const partners = await User.find({ role: 'delivery', isActive: true, isAvailable: true }).select(
     'name email phone vehicleType vehicleNumber isAvailable isActive location'
   );
   res.json({ success: true, data: partners });
@@ -122,6 +151,8 @@ const getFavoriteFarmers = asyncHandler(async (req, res) => {
 module.exports = {
   updateProfile,
   getFarmerProfile,
+  submitFarmerKyc,
+  getFeaturedFarmers,
   getDeliveryPartners,
   toggleFavoriteFarmer,
   getFavoriteFarmers,

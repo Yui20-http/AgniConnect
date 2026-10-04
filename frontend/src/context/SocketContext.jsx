@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { connectSocket, getSocket } from '../services/socket';
 import { notificationService } from '../services';
-import { useAuth } from './AuthContext';
+import { useAuth } from './useAuth';
 import { useToast } from './ToastContext';
 
 const SocketContext = createContext(null);

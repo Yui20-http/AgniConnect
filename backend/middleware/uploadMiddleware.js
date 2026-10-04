@@ -14,6 +14,10 @@ const hasCloudinaryConfig = Boolean(
     process.env.CLOUDINARY_API_SECRET
 );
 
+if (process.env.NODE_ENV === 'production' && !hasCloudinaryConfig) {
+  throw new Error('Cloudinary credentials are required for product image uploads in production');
+}
+
 if (hasCloudinaryConfig) {
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -36,7 +40,7 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
 });
 
-const uploadSingle = (fieldName) => async (req, res, next) => {
+const uploadSingle = (fieldName, folder = 'agriconnect/products') => async (req, res, next) => {
   upload.single(fieldName)(req, res, async (err) => {
     if (err) return next(err);
 
@@ -46,7 +50,7 @@ const uploadSingle = (fieldName) => async (req, res, next) => {
       if (hasCloudinaryConfig) {
         const result = await new Promise((resolve, reject) => {
           const stream = cloudinary.uploader.upload_stream(
-            { folder: 'agriconnect/products', resource_type: 'image' },
+            { folder, resource_type: 'image' },
             (error, uploadResult) => {
               if (error) return reject(error);
               resolve(uploadResult);

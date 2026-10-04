@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Truck, PackageCheck, MapPin, CheckCircle2, ArrowRight } from 'lucide-react';
 import { deliveryService } from '../../services';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import { useToast } from '../../context/ToastContext';
 import DashboardCard from '../../components/DashboardCard';
 import LoadingSpinner from '../../components/LoadingSpinner';

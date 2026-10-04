@@ -6,9 +6,11 @@ const {
   getDeliveryByOrder,
   assignDelivery,
   updateDeliveryStatus,
+  updateDeliveryLocation,
   getDeliveryStats,
 } = require('../controllers/deliveryController');
 const { protect, authorize } = require('../middleware/authMiddleware');
+const { uploadSingle } = require('../middleware/uploadMiddleware');
 
 router.use(protect);
 
@@ -17,6 +19,7 @@ router.get('/stats', authorize('delivery'), getDeliveryStats);
 router.get('/', authorize('admin'), getAllDeliveries);
 router.post('/assign', protect, assignDelivery);
 router.get('/order/:orderId', getDeliveryByOrder);
-router.put('/:id/status', authorize('delivery', 'admin'), updateDeliveryStatus);
+router.put('/:id/status', authorize('delivery', 'admin'), uploadSingle('proofPhoto', 'agriconnect/delivery-proofs'), updateDeliveryStatus);
+router.post('/:id/location', authorize('delivery', 'admin'), updateDeliveryLocation);
 
 module.exports = router;

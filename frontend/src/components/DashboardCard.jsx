@@ -13,16 +13,16 @@ const DashboardCard = ({ icon: Icon, label, value, color = 'primary', subtitle }
   };
 
   return (
-    <div className="card p-5 hover:shadow-card-hover transition-shadow">
+    <div className="card group p-5 transition duration-200 hover:-translate-y-0.5 hover:shadow-card-hover">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-500">{label}</p>
-          <p className="mt-2 text-2xl font-bold text-gray-900">{value}</p>
-          {subtitle && <p className="mt-1 text-xs text-gray-400">{subtitle}</p>}
+          <p className="text-[11px] font-semibold uppercase tracking-[.12em] text-[#7b857a]">{label}</p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-[#1c2a1f]">{value}</p>
+          {subtitle && <p className="mt-1 text-xs text-[#8a9388]">{subtitle}</p>}
         </div>
         {Icon && (
-          <div className={`p-3 rounded-xl ${colors[color]}`}>
-            <Icon className="w-6 h-6" />
+          <div className={`dashboard-card-icon rounded-xl p-3 transition-transform duration-300 group-hover:scale-110 ${colors[color]}`}>
+            <Icon className="h-5 w-5" />
           </div>
         )}
       </div>

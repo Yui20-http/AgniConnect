@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Trash2,
@@ -11,13 +11,22 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import { useToast } from '../../context/ToastContext';
-import { orderService, paymentService } from '../../services';
+import { cartService, orderService, paymentService } from '../../services';
 import { formatCurrency, categoryIcons } from '../../utils/helpers';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import EmptyState from '../../components/EmptyState';
 import Modal from '../../components/Modal';
+
+const loadRazorpay = () => new Promise((resolve) => {
+  if (window.Razorpay) return resolve(true);
+  const script = document.createElement('script');
+  script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+  script.onload = () => resolve(true);
+  script.onerror = () => resolve(false);
+  document.body.appendChild(script);
+});
 
 /**
  * BuyerCart - shopping cart with quantity controls and checkout.
@@ -31,6 +40,8 @@ const BuyerCart = () => {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [showPaymentScreen, setShowPaymentScreen] = useState(false);
+  const [checkoutQuote, setCheckoutQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const [form, setForm] = useState({
     deliveryAddress: user?.address || '',
     deliveryLocation: user?.location || '',
@@ -38,21 +49,16 @@ const BuyerCart = () => {
     notes: '',
   });
 
-  const farmerPaymentList = Array.from(
-    new Map(
-      (cart.items || [])
-        .filter((item) => item.product?.farmer)
-        .map((item) => {
-          const farmer = item.product.farmer;
-          const farmerId = typeof farmer === 'string' ? farmer : farmer._id;
-          const farmerName = typeof farmer === 'string' ? 'Farmer' : farmer.name || 'Farmer';
-          const upiId = typeof farmer === 'string' ? '' : farmer.upiId || 'UPI not added';
-          return [farmerId, { farmerId, farmerName, upiId }];
-        })
-    ).values()
-  );
-
-  const farmerUpiIds = farmerPaymentList.map((entry) => entry.upiId).filter((upi) => upi && upi !== 'UPI not added');
+  useEffect(() => {
+    if (!checkoutOpen || !cart.items.length) return undefined;
+    let active = true;
+    setQuoteLoading(true);
+    cartService.quote({ deliveryLocation: form.deliveryLocation || form.deliveryAddress })
+      .then(({ data }) => { if (active) setCheckoutQuote(data.data); })
+      .catch((error) => { if (active) toast.error(error?.response?.data?.message || 'Could not calculate delivery fee'); })
+      .finally(() => { if (active) setQuoteLoading(false); });
+    return () => { active = false; };
+  }, [checkoutOpen, form.deliveryLocation, form.deliveryAddress, cart.items.length, cart.total]);
 
   const closeCheckout = () => {
     setCheckoutOpen(false);
@@ -90,31 +96,12 @@ const BuyerCart = () => {
       toast.warning('Please enter a delivery address');
       return;
     }
+    if (form.paymentMethod !== 'Cash on Delivery') return;
 
     try {
       setPlacing(true);
-
-      let paymentReference = '';
-      if (form.paymentMethod === 'Online Payment' || form.paymentMethod === 'UPI Payment') {
-        toast.info('Preparing payment for the selected farmer UPI(s)...');
-        const paymentResponse = await paymentService.initiate({
-          amount: cart.total,
-          orderNumber: 'AGC-ORDER',
-          paymentMethod: form.paymentMethod,
-          payeeUpis: farmerUpiIds,
-        });
-        paymentReference = paymentResponse.data?.data?.paymentReference || '';
-      }
-
-      const { data } = await orderService.create({
-        ...form,
-        paymentReference,
-      });
-      toast.success(
-        form.paymentMethod === 'Online Payment' || form.paymentMethod === 'UPI Payment'
-          ? 'Payment request confirmed and order placed!'
-          : 'Order placed successfully!'
-      );
+      const { data } = await orderService.create({ ...form, paymentMethod: 'Cash on Delivery' });
+      toast.success('Order placed with Cash on Delivery.');
       await refresh();
       closeCheckout();
       const firstOrder = data.data?.[0];
@@ -127,9 +114,66 @@ const BuyerCart = () => {
     }
   };
 
+  const handleOnlinePayment = async () => {
+    if (!form.deliveryAddress) {
+      toast.warning('Please enter a delivery address');
+      return;
+    }
+
+    setPlacing(true);
+    try {
+      const loaded = await loadRazorpay();
+      if (!loaded) throw new Error('Razorpay Checkout could not be loaded. Check your internet connection.');
+
+      const { data: sessionResponse } = await paymentService.initiate({
+        deliveryLocation: form.deliveryLocation || form.deliveryAddress,
+        deliveryAddress: form.deliveryAddress,
+      });
+      const session = sessionResponse.data;
+      const checkout = new window.Razorpay({
+        key: session.keyId,
+        amount: session.amount,
+        currency: session.currency,
+        name: 'AgriConnect',
+        description: 'Farm produce order',
+        order_id: session.gatewayOrderId,
+        prefill: { name: user?.name || '', email: user?.email || '', contact: user?.phone || '' },
+        theme: { color: '#15803d' },
+        handler: async (gatewayResponse) => {
+          try {
+            await paymentService.verify(gatewayResponse);
+            const { data } = await orderService.create({
+              ...form,
+              paymentMethod: 'Online Payment',
+              gatewayOrderId: gatewayResponse.razorpay_order_id,
+            });
+            toast.success('Payment verified and order placed.');
+            await refresh();
+            closeCheckout();
+            const firstOrder = data.data?.[0];
+            navigate(firstOrder ? `/buyer/orders/${firstOrder._id}` : '/buyer/orders');
+          } catch (error) {
+            toast.error(error?.response?.data?.message || 'Payment verification or order placement failed. Contact support if your bank was charged.');
+          } finally {
+            setPlacing(false);
+          }
+        },
+        modal: { ondismiss: () => setPlacing(false) },
+      });
+      checkout.on('payment.failed', (response) => {
+        toast.error(response.error?.description || 'Payment failed. No order was placed.');
+        setPlacing(false);
+      });
+      checkout.open();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error.message || 'Could not start online payment');
+      setPlacing(false);
+    }
+  };
+
   const handlePaymentMethodChange = (value) => {
     setForm((prev) => ({ ...prev, paymentMethod: value }));
-    setShowPaymentScreen(value === 'Online Payment' || value === 'UPI Payment');
+    setShowPaymentScreen(value === 'Online Payment');
   };
 
   if (loading && cart.items.length === 0) {
@@ -198,7 +242,7 @@ const BuyerCart = () => {
                         <MapPin className="w-3 h-3" /> {p.location}
                       </p>
                       <p className="text-sm text-primary-700 font-semibold mt-1">
-                        {formatCurrency(p.pricePerUnit)}{' '}
+                        {formatCurrency(item.unitPrice ?? p.pricePerUnit)}{' '}
                         <span className="text-xs text-gray-400 font-normal">/ {p.unit}</span>
                       </p>
                     </div>
@@ -251,10 +295,11 @@ const BuyerCart = () => {
               </div>
               <div className="flex justify-between text-gray-600">
                 <span className="flex items-center gap-1">
-                  <Truck className="w-4 h-4" /> Delivery Fee
+                  <Truck className="w-4 h-4" /> Delivery (distance estimate)
                 </span>
                 <span className="font-medium">{formatCurrency(cart.deliveryFee)}</span>
               </div>
+              <p className="text-[11px] text-gray-400">Calculated per farmer order: ₹20 base + ₹5 per estimated km. Final estimate updates for your checkout location.</p>
               <div className="border-t border-gray-100 pt-3 flex justify-between text-lg font-bold text-gray-900">
                 <span>Total</span>
                 <span className="text-primary-700">{formatCurrency(cart.total)}</span>
@@ -275,44 +320,14 @@ const BuyerCart = () => {
         {showPaymentScreen ? (
           <div className="space-y-5">
             <div className="rounded-2xl border border-primary-100 bg-primary-50 p-4">
-              <p className="text-sm font-semibold text-primary-700 mb-3">Pay Now</p>
-              <div className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-                <div className="grid grid-cols-5 gap-1">
-                  {[
-                    [1, 1, 1, 1, 1],
-                    [1, 0, 1, 0, 1],
-                    [1, 1, 1, 1, 1],
-                    [1, 0, 1, 0, 1],
-                    [1, 1, 1, 1, 1],
-                  ].flat().map((cell, index) => (
-                    <span
-                      key={index}
-                      className={`h-2.5 w-2.5 rounded-[2px] ${cell ? 'bg-gray-900' : 'bg-transparent'}`}
-                    />
-                  ))}
-                </div>
-                <div className="text-sm text-gray-700">
-                  <p className="font-medium">Pay to farmer UPI(s)</p>
-                  <div className="mt-2 space-y-1">
-                    {farmerPaymentList.length ? (
-                      farmerPaymentList.map((entry) => (
-                        <p key={entry.farmerId} className="text-primary-700 font-bold">
-                          {entry.farmerName}: {entry.upiId}
-                        </p>
-                      ))
-                    ) : (
-                      <p className="text-primary-700 font-bold">No farmer UPI found</p>
-                    )}
-                  </div>
-                  <p className="mt-2 text-xs text-gray-500">Amount: {formatCurrency(cart.total)}</p>
-                </div>
-              </div>
+              <p className="text-sm font-semibold text-primary-700">Secure payment with Razorpay</p>
+              <p className="mt-1 text-sm text-gray-600">Choose UPI, card, or net banking in the Razorpay window. The order is placed only after the gateway payment is verified.</p>
             </div>
 
             <div className="bg-gray-50 rounded-lg p-3 text-sm">
               <div className="flex justify-between text-gray-600">
                 <span>Order Total</span>
-                <span>{formatCurrency(cart.total)}</span>
+                <span>{formatCurrency(checkoutQuote?.total ?? cart.total)}</span>
               </div>
             </div>
 
@@ -324,8 +339,8 @@ const BuyerCart = () => {
               >
                 Back
               </button>
-              <button type="button" onClick={handleCheckout} disabled={placing} className="btn-primary">
-                {placing ? 'Processing...' : 'Pay & Place Order'}
+              <button type="button" onClick={handleOnlinePayment} disabled={placing} className="btn-primary">
+                {placing ? 'Opening secure checkout…' : 'Continue to Razorpay'}
               </button>
             </div>
           </div>
@@ -359,7 +374,6 @@ const BuyerCart = () => {
                 className="input"
               >
                 <option>Cash on Delivery</option>
-                <option>UPI Payment</option>
                 <option>Online Payment</option>
               </select>
             </div>
@@ -374,31 +388,18 @@ const BuyerCart = () => {
               />
             </div>
 
-            {farmerPaymentList.length > 0 && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                <p className="font-semibold mb-2">Pay each farmer using their own UPI</p>
-                <ul className="space-y-1">
-                  {farmerPaymentList.map((entry) => (
-                    <li key={entry.farmerId} className="font-medium">
-                      {entry.farmerName}: {entry.upiId}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
             <div className="bg-gray-50 rounded-lg p-3 text-sm">
               <div className="flex justify-between text-gray-600">
                 <span>Subtotal</span>
-                <span>{formatCurrency(cart.subtotal)}</span>
+                <span>{formatCurrency(checkoutQuote?.subtotal ?? cart.subtotal)}</span>
               </div>
               <div className="flex justify-between text-gray-600">
-                <span>Delivery</span>
-                <span>{formatCurrency(cart.deliveryFee)}</span>
+                <span>Delivery · estimated by distance</span>
+                <span>{formatCurrency(checkoutQuote?.deliveryFee ?? cart.deliveryFee)}</span>
               </div>
               <div className="flex justify-between font-bold text-gray-900 mt-1 pt-1 border-t border-gray-200">
                 <span>Total</span>
-                <span className="text-primary-700">{formatCurrency(cart.total)}</span>
+                <span className="text-primary-700">{formatCurrency(checkoutQuote?.total ?? cart.total)}</span>
               </div>
             </div>
 
@@ -406,8 +407,8 @@ const BuyerCart = () => {
               <button type="button" onClick={closeCheckout} className="btn-secondary">
                 Cancel
               </button>
-              <button type="submit" disabled={placing} className="btn-primary">
-                {placing ? 'Placing...' : 'Place Order'}
+              <button type="submit" disabled={placing || quoteLoading} className="btn-primary">
+                {quoteLoading ? 'Calculating delivery…' : placing ? 'Placing...' : 'Place Order'}
               </button>
             </div>
           </form>

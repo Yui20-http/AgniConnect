@@ -28,12 +28,28 @@ const initSocket = (httpServer) => {
     },
   });
 
+  const jwt = require('jsonwebtoken');
+  const User = require('../models/User');
+  io.use(async (socket, next) => {
+    try {
+      const token = socket.handshake.auth?.token;
+      if (!token) return next(new Error('Authentication required'));
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findById(decoded.id).select('_id isActive');
+      if (!user || !user.isActive) return next(new Error('User is not authorized'));
+      socket.data.userId = String(user._id);
+      return next();
+    } catch (error) {
+      return next(new Error('Invalid socket authentication'));
+    }
+  });
+
   io.on('connection', (socket) => {
-    // The client sends its user id right after connecting.
-    socket.on('join', (userId) => {
-      if (userId) {
-        socket.join(String(userId));
-        console.log(`🔌 Socket ${socket.id} joined room ${userId}`);
+    // Room identity comes only from the verified JWT, never from client payload.
+    socket.join(socket.data.userId);
+    socket.on('join', (requestedUserId) => {
+      if (String(requestedUserId) === socket.data.userId) {
+        socket.join(socket.data.userId);
       }
     });
 

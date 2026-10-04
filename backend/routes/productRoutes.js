@@ -9,6 +9,7 @@ const {
   deleteProduct,
   compareProducts,
   getProductNames,
+  applyMarketPrice,
 } = require('../controllers/productController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { uploadSingle } = require('../middleware/uploadMiddleware');
@@ -26,5 +27,6 @@ router.post('/', protect, authorize('farmer'), uploadSingle('image'), createProd
 router.get('/:id', getProductById);
 router.put('/:id', protect, authorize('farmer', 'admin'), uploadSingle('image'), updateProduct);
 router.delete('/:id', protect, authorize('farmer', 'admin'), deleteProduct);
+router.post('/:id/apply-market-price', protect, authorize('farmer'), applyMarketPrice);
 
 module.exports = router;

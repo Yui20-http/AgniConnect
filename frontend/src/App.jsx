@@ -13,6 +13,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import PasswordReset from './pages/PasswordReset';
 import Marketplace from './pages/Marketplace';
 import ProductDetails from './pages/ProductDetails';
 import MarketPrices from './pages/MarketPrices';
@@ -25,12 +26,16 @@ import FarmerProducts from './pages/farmer/FarmerProducts';
 import FarmerOrders from './pages/farmer/FarmerOrders';
 import FarmerProfile from './pages/farmer/FarmerProfile';
 import FarmerInsights from './pages/farmer/FarmerInsights';
+import FarmerEarnings from './pages/farmer/FarmerEarnings';
 
 // Buyer pages
 import BuyerDashboard from './pages/buyer/BuyerDashboard';
 import BuyerCart from './pages/buyer/BuyerCart';
 import BuyerOrders from './pages/buyer/BuyerOrders';
 import BuyerProfile from './pages/buyer/BuyerProfile';
+import BuyerFavorites from './pages/buyer/BuyerFavorites';
+import PlansAndOffers from './pages/shared/PlansAndOffers';
+import Messages from './pages/shared/Messages';
 
 // Delivery pages
 import DeliveryDashboard from './pages/delivery/DeliveryDashboard';
@@ -44,6 +49,9 @@ import AdminProducts from './pages/admin/AdminProducts';
 import AdminOrders from './pages/admin/AdminOrders';
 import AdminLogistics from './pages/admin/AdminLogistics';
 import AdminMarketPrices from './pages/admin/AdminMarketPrices';
+import AdminReports from './pages/admin/AdminReports';
+import AdminAuditLogs from './pages/admin/AdminAuditLogs';
+import AmbientEffects from './components/AmbientEffects';
 
 // Shared
 import OrderDetails from './pages/shared/OrderDetails';
@@ -63,6 +71,8 @@ function App() {
       <AuthProvider>
         <CartProvider>
           <SocketProvider>
+            <div className="futuristic-ui min-h-screen">
+            <AmbientEffects />
             <Routes>
               {/* ---------- Public ---------- */}
               <Route element={<PublicLayout />}>
@@ -76,6 +86,8 @@ function App() {
               {/* ---------- Auth ---------- */}
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/forgot-password" element={<PasswordReset />} />
+              <Route path="/reset-password" element={<PasswordReset />} />
 
               {/* ---------- Farmer ---------- */}
               <Route
@@ -89,6 +101,9 @@ function App() {
                 <Route index element={<FarmerDashboard />} />
                 <Route path="products" element={<FarmerProducts />} />
                 <Route path="orders" element={<FarmerOrders />} />
+                <Route path="earnings" element={<FarmerEarnings />} />
+                <Route path="requests" element={<PlansAndOffers role="farmer" />} />
+                <Route path="messages" element={<Messages role="farmer" />} />
                 <Route path="orders/:id" element={<OrderDetails role="farmer" />} />
                 <Route path="insights" element={<FarmerInsights />} />
                 <Route path="profile" element={<FarmerProfile />} />
@@ -106,6 +121,10 @@ function App() {
                 <Route index element={<BuyerDashboard />} />
                 <Route path="cart" element={<BuyerCart />} />
                 <Route path="orders" element={<BuyerOrders />} />
+                <Route path="favorites" element={<BuyerFavorites />} />
+                <Route path="plans" element={<PlansAndOffers role="buyer" />} />
+                <Route path="offers" element={<PlansAndOffers role="buyer" />} />
+                <Route path="messages" element={<Messages role="buyer" />} />
                 <Route path="orders/:id" element={<OrderDetails role="buyer" />} />
                 <Route path="orders/:id/track" element={<Tracking />} />
                 <Route path="profile" element={<BuyerProfile />} />
@@ -141,12 +160,15 @@ function App() {
                 <Route path="orders/:id" element={<OrderDetails role="admin" />} />
                 <Route path="logistics" element={<AdminLogistics />} />
                 <Route path="market-prices" element={<AdminMarketPrices />} />
+                <Route path="reports" element={<AdminReports />} />
+                <Route path="audit" element={<AdminAuditLogs />} />
               </Route>
 
               {/* ---------- Fallback ---------- */}
               <Route path="/404" element={<NotFound />} />
               <Route path="*" element={<Navigate to="/404" replace />} />
             </Routes>
+            </div>
           </SocketProvider>
         </CartProvider>
       </AuthProvider>

@@ -1,8 +1,7 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { authService } from '../services';
 import { connectSocket, disconnectSocket } from '../services/socket';
-
-const AuthContext = createContext(null);
+import AuthContext from './authContextValue';
 
 const safeJsonParse = (value) => {
   if (!value) return null;
@@ -80,7 +79,7 @@ export const AuthProvider = ({ children }) => {
   const register = async (payload) => {
     const { data } = await authService.register(payload);
     const { userData, token } = extractAuthPayload(data);
-    persist(userData, token);
+    if (token) persist(userData, token);
     return userData;
   };
 
@@ -104,21 +103,3 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    return {
-      user: null,
-      loading: false,
-      login: async () => {
-        throw new Error('AuthProvider is not available');
-      },
-      register: async () => {
-        throw new Error('AuthProvider is not available');
-      },
-      logout: () => {},
-      updateUser: () => {},
-    };
-  }
-  return ctx;
-};

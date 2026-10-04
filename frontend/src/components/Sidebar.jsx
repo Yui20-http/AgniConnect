@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { Leaf, LogOut, X } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 
 /**
  * Sidebar - dashboard navigation. Links are passed in per role.
@@ -17,33 +17,33 @@ const Sidebar = ({ links, open, onClose }) => {
   return (
     <>
       {/* Mobile overlay */}
-      {open && <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={onClose} />}
+      {open && <div className="fixed inset-0 z-40 bg-[#101812]/50 backdrop-blur-sm lg:hidden" onClick={onClose} />}
 
       <aside
-        className={`fixed lg:sticky top-0 left-0 z-50 h-screen w-64 bg-white border-r border-gray-100 flex flex-col transition-transform duration-300 ${
+        className={`fixed left-0 top-0 z-50 flex h-screen w-[272px] flex-col border-r border-emerald-300/15 bg-[#07110d] text-white shadow-[10px_0_40px_-25px_rgba(0,0,0,.9)] transition-transform duration-300 lg:sticky ${
           open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
-        <div className="flex items-center justify-between h-16 px-5 border-b border-gray-100">
+        <div className="flex h-[72px] items-center justify-between border-b border-white/10 px-5">
           <NavLink to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center">
-              <Leaf className="w-4 h-4 text-white" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-lime-200/30 bg-lime-300/10 shadow-[0_0_24px_rgba(163,230,53,.16)]">
+              <Leaf className="h-4 w-4 text-lime-300" />
             </div>
-            <span className="text-lg font-extrabold text-gray-900">
-              Agri<span className="text-primary-600">Connect</span>
+            <span className="text-lg font-extrabold tracking-tight text-white">
+              Agri<span className="text-lime-300">Connect</span>
             </span>
           </NavLink>
-          <button onClick={onClose} className="lg:hidden text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="text-white/50 hover:text-white lg:hidden">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="px-5 py-4 border-b border-gray-100">
-          <p className="text-sm font-semibold text-gray-800 truncate">{user?.name}</p>
-          <p className="text-xs text-gray-500 capitalize">{user?.role} Account</p>
+        <div className="border-b border-white/10 px-5 py-5">
+          <p className="truncate text-sm font-semibold text-white">{user?.name}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#afc5b3]">{user?.role} account</p>
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+        <nav className="flex-1 space-y-1 overflow-y-auto p-3 pt-5">
           {links.map((link) => (
             <NavLink
               key={link.to}
@@ -51,10 +51,10 @@ const Sidebar = ({ links, open, onClose }) => {
               end={link.end}
               onClick={onClose}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+                `flex items-center gap-3 rounded-xl px-3.5 py-3 text-[13px] font-medium transition ${
                   isActive
-                    ? 'bg-primary-50 text-primary-700'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    ? 'bg-lime-300 text-[#102015] shadow-[0_0_24px_rgba(163,230,53,.16)]'
+                    : 'text-white/65 hover:bg-white/[.07] hover:text-lime-100'
                 }`
               }
             >
@@ -64,10 +64,10 @@ const Sidebar = ({ links, open, onClose }) => {
           ))}
         </nav>
 
-        <div className="p-3 border-t border-gray-100">
+        <div className="border-t border-white/10 p-3">
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition"
+            className="flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-[13px] font-medium text-white/65 transition hover:bg-red-500/10 hover:text-red-200"
           >
             <LogOut className="w-5 h-5" /> Logout
           </button>

@@ -57,8 +57,8 @@ const BuyerOrders = () => {
   const cancelOrder = async (order) => {
     try {
       setBusyId(order._id);
-      await orderService.updateStatus(order._id, 'Cancelled', 'Cancelled by buyer');
-      toast.success(`Order ${order.orderNumber} cancelled`);
+      const response = await orderService.cancel(order._id, 'Cancelled by buyer');
+      toast.success(response.data?.message || `Order ${order.orderNumber} cancelled`);
       load();
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Could not cancel order');
@@ -87,6 +87,9 @@ const BuyerOrders = () => {
           </select>
         </div>
       </div>
+      <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+        You can cancel before dispatch while an order is Pending, Accepted, or Processing. Paid Razorpay orders are refunded to the original payment method; Cash on Delivery orders have no payment to refund. Contact support for dispatched or delivered orders.
+      </p>
 
       {filtered.length === 0 ? (
         <div className="card">
@@ -111,7 +114,7 @@ const BuyerOrders = () => {
                 order={o}
                 role="buyer"
                 actions={
-                  ['Pending', 'Accepted'].includes(o.status) && (
+                  ['Pending', 'Accepted', 'Processing'].includes(o.status) && (
                     <button
                       onClick={() => cancelOrder(o)}
                       disabled={busyId === o._id}

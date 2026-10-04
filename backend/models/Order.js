@@ -42,6 +42,7 @@ const orderSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    deliveryDistanceKm: { type: Number, default: 0, min: 0 },
     grandTotal: {
       type: Number,
       required: true,
@@ -62,6 +63,11 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
+    },
+    payoutStatus: {
+      type: String,
+      enum: ['Pending', 'Processing', 'Paid'],
+      default: 'Pending',
     },
     refundStatus: {
       type: String,
@@ -108,6 +114,21 @@ const orderSchema = new mongoose.Schema(
       default: 'Cash on Delivery',
     },
     paymentReference: {
+      type: String,
+      default: '',
+    },
+    paymentTransaction: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PaymentTransaction',
+      default: null,
+    },
+    subscription: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Subscription',
+      default: null,
+      index: true,
+    },
+    refundReference: {
       type: String,
       default: '',
     },

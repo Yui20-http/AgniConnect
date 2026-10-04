@@ -10,7 +10,7 @@ import {
   Store,
 } from 'lucide-react';
 import { orderService } from '../../services';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import { useCart } from '../../context/CartContext';
 import { useToast } from '../../context/ToastContext';
 import DashboardCard from '../../components/DashboardCard';

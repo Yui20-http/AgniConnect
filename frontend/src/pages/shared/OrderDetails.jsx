@@ -11,7 +11,7 @@ import {
   CreditCard,
   Navigation,
 } from 'lucide-react';
-import { orderService, userService, deliveryService, paymentService } from '../../services';
+import { orderService, userService, deliveryService, paymentService, reportService } from '../../services';
 import { useToast } from '../../context/ToastContext';
 import { useSocket } from '../../context/SocketContext';
 import { formatCurrency, formatDateTime, categoryIcons } from '../../utils/helpers';
@@ -36,6 +36,10 @@ const OrderDetails = ({ role = 'buyer' }) => {
   const [assignOpen, setAssignOpen] = useState(false);
   const [selectedPartner, setSelectedPartner] = useState('');
   const [assigning, setAssigning] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState('Delivery issue');
+  const [reportDescription, setReportDescription] = useState('');
+  const [reporting, setReporting] = useState(false);
 
   const load = async () => {
     try {
@@ -108,6 +112,33 @@ const OrderDetails = ({ role = 'buyer' }) => {
     }
   };
 
+  const handleAssignNearestDelivery = async () => {
+    try {
+      setAssigning(true);
+      await deliveryService.assign(order._id);
+      toast.success('Nearest available delivery partner assigned');
+      setAssignOpen(false);
+      load();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Could not find an available courier');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const submitReport = async (event) => {
+    event.preventDefault();
+    try {
+      setReporting(true);
+      await reportService.create({ targetType: 'order', targetId: order._id, reason: reportReason, description: reportDescription });
+      toast.success('Report sent to the moderation team');
+      setReportOpen(false);
+      setReportDescription('');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Could not submit report');
+    } finally { setReporting(false); }
+  };
+
   const handleDownloadInvoice = async () => {
     try {
       const response = await paymentService.getInvoice(order._id);
@@ -159,6 +190,7 @@ const OrderDetails = ({ role = 'buyer' }) => {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={order.status} />
+            {(role === 'buyer' || role === 'farmer') && <button onClick={() => setReportOpen(true)} className="btn-secondary !py-1.5 !px-3 text-xs">Report an issue</button>}
             {role === 'buyer' && order.status === 'Ready for Pickup' && !order.deliveryPartner && (
               <button onClick={() => setAssignOpen(true)} className="btn-primary !py-1.5 !px-3 text-xs">
                 <Truck className="w-3.5 h-3.5" /> Assign Delivery
@@ -190,6 +222,10 @@ const OrderDetails = ({ role = 'buyer' }) => {
           <p className="text-sm text-gray-600">
             Pick a delivery partner for order <strong>{order.orderNumber}</strong>.
           </p>
+          <button onClick={handleAssignNearestDelivery} disabled={assigning} className="btn-primary w-full">
+            {assigning ? 'Searching nearby couriers...' : 'Assign nearest available courier'}
+          </button>
+          <p className="text-center text-xs text-gray-400">Or choose a specific partner</p>
           <label className="label">Select delivery partner</label>
           <select value={selectedPartner} onChange={(e) => setSelectedPartner(e.target.value)} className="input">
             <option value="">-- Choose a partner --</option>
@@ -208,6 +244,14 @@ const OrderDetails = ({ role = 'buyer' }) => {
             </button>
           </div>
         </div>
+      </Modal>
+
+      <Modal isOpen={reportOpen} onClose={() => setReportOpen(false)} title="Report an order issue" size="sm">
+        <form onSubmit={submitReport} className="space-y-4">
+          <label className="block"><span className="label">Issue type</span><select className="input" value={reportReason} onChange={(event) => setReportReason(event.target.value)}><option>Delivery issue</option><option>Payment issue</option><option>Product quality</option><option>Order not received</option><option>Other</option></select></label>
+          <label className="block"><span className="label">Details</span><textarea className="input" rows={4} maxLength={2000} required value={reportDescription} onChange={(event) => setReportDescription(event.target.value)} placeholder="Describe what happened" /></label>
+          <div className="flex justify-end gap-2"><button type="button" onClick={() => setReportOpen(false)} className="btn-secondary">Cancel</button><button disabled={reporting} className="btn-primary">{reporting ? 'Sending...' : 'Send report'}</button></div>
+        </form>
       </Modal>
 
       <div className="grid lg:grid-cols-3 gap-5">
@@ -243,7 +287,7 @@ const OrderDetails = ({ role = 'buyer' }) => {
                 <span>{formatCurrency(order.totalAmount)}</span>
               </div>
               <div className="flex justify-between text-gray-600">
-                <span>Delivery Fee</span>
+                <span>Delivery Fee{order.deliveryDistanceKm ? ` · approx. ${order.deliveryDistanceKm} km` : ''}</span>
                 <span>{formatCurrency(order.deliveryFee)}</span>
               </div>
               <div className="flex justify-between font-bold text-gray-900 text-base pt-1.5 border-t border-gray-100">

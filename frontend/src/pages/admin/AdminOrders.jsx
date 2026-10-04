@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingBag, Filter, Truck, Eye, Search } from 'lucide-react';
-import { orderService, userService, deliveryService } from '../../services';
+import { ShoppingBag, Filter, Truck, Eye, Search, Download } from 'lucide-react';
+import { orderService, userService, deliveryService, adminService } from '../../services';
 import { useToast } from '../../context/ToastContext';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -34,6 +34,26 @@ const AdminOrders = () => {
   const [assignTarget, setAssignTarget] = useState(null);
   const [selectedPartner, setSelectedPartner] = useState('');
   const [assigning, setAssigning] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const exportCsv = async () => {
+    try {
+      setExporting(true);
+      const response = await adminService.exportOrders();
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'agriconnect-orders.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Could not export orders');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const load = async () => {
     try {
@@ -94,7 +114,10 @@ const AdminOrders = () => {
           <h2 className="text-xl font-bold text-gray-900">Order Management</h2>
           <p className="text-sm text-gray-500">{filtered.length} order(s)</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={exportCsv} disabled={exporting} className="btn-secondary !py-2">
+            <Download className="w-4 h-4" /> {exporting ? 'Exporting...' : 'Export CSV'}
+          </button>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input

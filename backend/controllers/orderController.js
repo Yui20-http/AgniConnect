@@ -4,12 +4,16 @@ const Product = require('../models/Product');
 const Cart = require('../models/Cart');
 const Delivery = require('../models/Delivery');
 const User = require('../models/User');
+const PaymentTransaction = require('../models/PaymentTransaction');
 const asyncHandler = require('../utils/asyncHandler');
 const { createNotification } = require('../utils/notify');
 const { emitToUser, emitToAll } = require('../utils/socket');
-const { ORDER_STATUS, DELIVERY_FEE, DELIVERY_STATUS, PLATFORM_COMMISSION_RATE } = require('../config/constants');
+const { ORDER_STATUS, DELIVERY_STATUS, PLATFORM_COMMISSION_RATE } = require('../config/constants');
 const { geocodeLocation } = require('../utils/geo');
-const { calculateTieredUnitPrice, calculatePayoutBreakdown } = require('../utils/commerce');
+const { calculateTieredUnitPrice, calculatePayoutBreakdown, groupCartItemsByFarmer } = require('../utils/commerce');
+const { calculateCartTotals } = require('../utils/commerce');
+const { cancelOrderAndRefund } = require('../utils/orderCancellation');
+const { assignNearestCourier } = require('../utils/deliveryDispatch');
 
 /**
  * @desc    Place an order from the buyer's cart.
@@ -19,17 +23,39 @@ const { calculateTieredUnitPrice, calculatePayoutBreakdown } = require('../utils
  * @access  Private/Buyer
  */
 const createOrder = asyncHandler(async (req, res) => {
-  const { deliveryAddress, deliveryLocation, paymentMethod, notes, paymentReference } = req.body;
+  const { deliveryAddress, deliveryLocation, paymentMethod, notes, gatewayOrderId } = req.body;
 
   if (!deliveryAddress) {
     res.status(400);
     throw new Error('Delivery address is required');
   }
 
-  const cart = await Cart.findOne({ buyer: req.user._id }).populate('items.product');
+  const cart = await Cart.findOne({ buyer: req.user._id }).populate({
+    path: 'items.product',
+    populate: { path: 'farmer', select: 'name farmName farmLocation location' },
+  });
   if (!cart || cart.items.length === 0) {
     res.status(400);
     throw new Error('Your cart is empty');
+  }
+
+  const deliveryDestination = deliveryLocation || deliveryAddress || req.user.location || req.user.address || '';
+  const cartQuote = calculateCartTotals(cart.items, deliveryDestination);
+  const normalizedPaymentMethod = paymentMethod || 'Cash on Delivery';
+  let paymentTransaction = null;
+  if (normalizedPaymentMethod === 'Online Payment') {
+    paymentTransaction = await PaymentTransaction.findOne({
+      buyer: req.user._id,
+      gatewayOrderId,
+      status: 'verified',
+    });
+    if (!paymentTransaction || paymentTransaction.amountPaise !== Math.round(cartQuote.total * 100)) {
+      res.status(400);
+      throw new Error('Payment must be completed and verified for the current cart before placing the order');
+    }
+  } else if (normalizedPaymentMethod !== 'Cash on Delivery') {
+    res.status(400);
+    throw new Error('Unsupported payment method');
   }
 
   // Validate stock first (fail fast before creating anything).
@@ -43,16 +69,14 @@ const createOrder = asyncHandler(async (req, res) => {
       res.status(400);
       throw new Error(`Only ${item.product.quantity} ${item.product.unit} of ${item.product.name} available`);
     }
+    if (Number(item.quantity) < Number(item.product.minOrderQuantity || 1)) {
+      res.status(400);
+      throw new Error(`${item.product.name} requires a minimum order of ${item.product.minOrderQuantity || 1} ${item.product.unit}`);
+    }
   }
 
   // Group cart items by farmer.
-  const groups = {};
-  cart.items.forEach((item) => {
-    if (!item.product) return;
-    const farmerId = String(item.product.farmer);
-    if (!groups[farmerId]) groups[farmerId] = [];
-    groups[farmerId].push(item);
-  });
+  const groups = groupCartItemsByFarmer(cart.items);
 
   const createdOrders = [];
 
@@ -79,16 +103,16 @@ const createOrder = asyncHandler(async (req, res) => {
       });
     }
 
-    const deliveryFee = DELIVERY_FEE;
+    const deliveryEstimate = cartQuote.deliveryByFarmer[farmerId];
+    const deliveryFee = deliveryEstimate?.deliveryFee || 0;
     const grandTotal = subtotal + deliveryFee;
-    const normalizedPaymentMethod = paymentMethod || 'Cash on Delivery';
-    const paymentStatus = /online/i.test(normalizedPaymentMethod) || paymentReference ? 'Paid' : 'Pending';
+    const paymentStatus = paymentTransaction ? 'Paid' : 'Pending';
     const payoutBreakdown = calculatePayoutBreakdown(subtotal, PLATFORM_COMMISSION_RATE);
 
     const farmer = await User.findById(farmerId);
 
     const pickupLocation = farmer?.farmLocation || farmer?.location || 'Farm';
-    const dropLocation = deliveryLocation || deliveryAddress;
+    const dropLocation = deliveryDestination;
 
     // Derive approximate coordinates so the tracking map can render a route.
     const pickupCoords = geocodeLocation(pickupLocation);
@@ -99,6 +123,7 @@ const createOrder = asyncHandler(async (req, res) => {
       farmer: farmerId,
       totalAmount: subtotal,
       deliveryFee,
+      deliveryDistanceKm: deliveryEstimate?.distanceKm || 0,
       grandTotal,
       platformCommissionRate: PLATFORM_COMMISSION_RATE,
       commissionAmount: payoutBreakdown.platformCommission,
@@ -113,7 +138,8 @@ const createOrder = asyncHandler(async (req, res) => {
       },
       paymentMethod: normalizedPaymentMethod,
       paymentStatus,
-      paymentReference: paymentReference || '',
+      paymentReference: paymentTransaction?.gatewayPaymentId || '',
+      paymentTransaction: paymentTransaction?._id || null,
       notes: notes || '',
       status: ORDER_STATUS.PENDING,
       statusHistory: [{ status: ORDER_STATUS.PENDING, note: 'Order placed by buyer' }],
@@ -162,6 +188,12 @@ const createOrder = asyncHandler(async (req, res) => {
     createdOrders.push(order);
   }
 
+  if (paymentTransaction) {
+    paymentTransaction.status = 'used';
+    paymentTransaction.orders = createdOrders.map((order) => order._id);
+    await paymentTransaction.save();
+  }
+
   // Empty the cart.
   cart.items = [];
   await cart.save();
@@ -205,10 +237,20 @@ const getOrders = asyncHandler(async (req, res) => {
  * @access  Private (owner, assigned delivery partner or admin)
  */
 const getOrderTimeline = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id).select('orderNumber status statusHistory createdAt');
+  const order = await Order.findById(req.params.id).select('orderNumber status statusHistory createdAt buyer farmer deliveryPartner');
   if (!order) {
     res.status(404);
     throw new Error('Order not found');
+  }
+
+  const canView =
+    String(order.buyer) === String(req.user._id) ||
+    String(order.farmer) === String(req.user._id) ||
+    String(order.deliveryPartner || '') === String(req.user._id) ||
+    req.user.role === 'admin';
+  if (!canView) {
+    res.status(403);
+    throw new Error('Not authorized to view this order timeline');
   }
 
   const timeline = [...(order.statusHistory || [])].sort((a, b) => new Date(a.at || a.createdAt) - new Date(b.at || b.createdAt));
@@ -255,31 +297,23 @@ const cancelOrder = asyncHandler(async (req, res) => {
     throw new Error('Only the buyer or admin can cancel this order');
   }
 
-  const cancellableStatuses = [ORDER_STATUS.PENDING, ORDER_STATUS.ACCEPTED, ORDER_STATUS.PROCESSING];
-  if (!cancellableStatuses.includes(order.status)) {
-    res.status(400);
-    throw new Error('This order can no longer be cancelled. Refunds are available only before dispatch.');
+  let cancelled;
+  try {
+    cancelled = await cancelOrderAndRefund(order, req.body?.reason || 'Buyer requested cancellation');
+  } catch (error) {
+    if (error.statusCode) res.status(error.statusCode);
+    throw error;
   }
-
-  order.status = ORDER_STATUS.CANCELLED;
-  order.cancelReason = req.body?.reason || 'Buyer requested cancellation';
-  order.refundStatus = 'Requested';
-  order.refundAmount = Number(order.grandTotal || 0);
-  order.statusHistory.push({
-    status: ORDER_STATUS.CANCELLED,
-    note: order.cancelReason,
-    at: new Date(),
-  });
-  await order.save();
 
   res.json({
     success: true,
     message: 'Order cancelled successfully',
     data: {
-      orderId: order._id,
-      refundAmount: order.refundAmount,
-      refundStatus: order.refundStatus,
-      policy: 'Orders cancelled before dispatch are refunded in full.',
+      orderId: cancelled._id,
+      refundAmount: cancelled.refundAmount,
+      refundStatus: cancelled.refundStatus,
+      refundReference: cancelled.refundReference || '',
+      policy: 'Cancellation is allowed before dispatch (Pending, Accepted, or Processing). Paid online orders are refunded through Razorpay; COD orders have no payment to refund.',
     },
   });
 });
@@ -320,10 +354,12 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
       res.status(403);
       throw new Error('Buyers can only cancel orders');
     }
-    if (![ORDER_STATUS.PENDING, ORDER_STATUS.ACCEPTED].includes(order.status)) {
-      res.status(400);
-      throw new Error('Order can no longer be cancelled');
-    }
+    res.status(400);
+    throw new Error('Use the cancellation action so payment refunds can be processed safely.');
+  }
+  if (status === ORDER_STATUS.CANCELLED) {
+    res.status(400);
+    throw new Error('Use the order cancellation endpoint so refunds and inventory can be reconciled.');
   }
 
   order.status = status;
@@ -354,18 +390,32 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
 
   // When the farmer marks the order ready for pickup, create a delivery record.
   if (status === ORDER_STATUS.READY_FOR_PICKUP) {
-    const existing = await Delivery.findOne({ order: order._id });
+    let existing = await Delivery.findOne({ order: order._id });
     if (!existing) {
-      await Delivery.create({
+      existing = await Delivery.create({
         order: order._id,
         farmer: order.farmer,
         buyer: order.buyer,
         pickupLocation: order.pickupLocation,
         deliveryLocation: order.deliveryLocation,
         coordinates: order.coordinates,
+        distanceKm: order.deliveryDistanceKm,
         status: DELIVERY_STATUS.ASSIGNED,
         statusHistory: [{ status: DELIVERY_STATUS.ASSIGNED, note: 'Awaiting delivery partner assignment' }],
       });
+    }
+    if (!existing.deliveryPartner) {
+      const assignment = await assignNearestCourier(order, existing);
+      if (!assignment) {
+        await createNotification({
+          user: order.buyer,
+          title: 'Looking for an available courier',
+          message: `Your order ${order.orderNumber} is ready. No available courier was found yet; assignment will need to be retried.`,
+          type: 'delivery',
+          link: `/buyer/orders/${order._id}`,
+          meta: { orderId: order._id },
+        });
+      }
     }
   }
 

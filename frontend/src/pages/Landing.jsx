@@ -1,29 +1,29 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Search,
   ArrowRight,
   Truck,
   ShieldCheck,
-  TrendingUp,
   Users,
   Package,
   IndianRupee,
   Sprout,
   CheckCircle2,
   Star,
-  MapPin,
 } from 'lucide-react';
-import { productService } from '../services';
+import { productService, userService } from '../services';
 import ProductCard from '../components/ProductCard';
+import ScrollMarketHero from '../components/ScrollMarketHero';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { formatCurrency, categoryIcons } from '../utils/helpers';
+import { categoryIcons } from '../utils/helpers';
 
 /**
  * Landing page - the public marketing homepage.
  */
 const Landing = () => {
   const [featured, setFeatured] = useState([]);
+  const [featuredFarmers, setFeaturedFarmers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
@@ -31,8 +31,12 @@ const Landing = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const { data } = await productService.getAll({ limit: 8, sort: 'popular', available: 'true' });
-        setFeatured(data.data);
+        const [productsRes, farmersRes] = await Promise.all([
+          productService.getAll({ limit: 8, sort: 'popular', available: 'true' }),
+          userService.getFeaturedFarmers(),
+        ]);
+        setFeatured(productsRes.data.data);
+        setFeaturedFarmers(farmersRes.data.data || []);
       } catch (err) {
         // ignore
       } finally {
@@ -58,122 +62,41 @@ const Landing = () => {
 
   return (
     <div>
-      {/* ============ HERO ============ */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-primary-50 via-white to-earth-50">
-        <div className="absolute inset-0 opacity-30">
-          <div className="absolute top-10 left-10 w-72 h-72 bg-primary-200 rounded-full blur-3xl" />
-          <div className="absolute bottom-10 right-10 w-96 h-96 bg-earth-200 rounded-full blur-3xl" />
-        </div>
+      <ScrollMarketHero search={search} setSearch={setSearch} onSearch={handleSearch} />
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <span className="inline-flex items-center gap-2 badge bg-primary-100 text-primary-700 mb-5">
-                <Sprout className="w-4 h-4" /> Farm to Table, Directly
-              </span>
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-tight">
-                Fresh from the <span className="text-primary-600">Farm</span>, Delivered to Your Door
-              </h1>
-              <p className="mt-5 text-lg text-gray-600 leading-relaxed">
-                AgriConnect connects farmers directly with buyers, eliminating middlemen and ensuring
-                fair prices. Real-time orders, transparent logistics, and fresh produce every time.
-              </p>
-
-              <form onSubmit={handleSearch} className="mt-8 flex flex-col sm:flex-row gap-3 max-w-xl">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search for tomatoes, rice, mangoes..."
-                    className="input pl-11 h-12"
-                  />
-                </div>
-                <button type="submit" className="btn-primary h-12 px-6">
-                  Search <ArrowRight className="w-4 h-4" />
-                </button>
-              </form>
-
-              <div className="mt-6 flex flex-wrap gap-2">
-                {categories.map((c) => (
-                  <Link
-                    key={c}
-                    to={`/marketplace?category=${c}`}
-                    className="badge bg-white border border-gray-200 text-gray-600 hover:border-primary-300 hover:text-primary-600 transition"
-                  >
-                    {categoryIcons[c]} {c}
-                  </Link>
-                ))}
-              </div>
-
-              <div className="mt-8 flex flex-wrap items-center gap-6 text-sm text-gray-500">
-                <span className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-primary-600" /> No middlemen
-                </span>
-                <span className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-primary-600" /> Real-time tracking
-                </span>
-                <span className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-primary-600" /> Fair prices
-                </span>
-              </div>
-            </div>
-
-            <div className="relative">
-              <div className="grid grid-cols-2 gap-4">
-                <img
-                  src="https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=600&q=80"
-                  alt="Fresh vegetables"
-                  className="rounded-2xl shadow-lg h-56 w-full object-cover"
-                />
-                <img
-                  src="https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=600&q=80"
-                  alt="Farmer in field"
-                  className="rounded-2xl shadow-lg h-56 w-full object-cover mt-8"
-                />
-                <img
-                  src="https://images.unsplash.com/photo-1542838132-92c53300491e?w=600&q=80"
-                  alt="Market produce"
-                  className="rounded-2xl shadow-lg h-56 w-full object-cover -mt-4"
-                />
-                <img
-                  src="https://images.unsplash.com/photo-1560493676-04071c5f467b?w=600&q=80"
-                  alt="Agriculture field"
-                  className="rounded-2xl shadow-lg h-56 w-full object-cover mt-4"
-                />
-              </div>
-              <div className="absolute -bottom-4 left-4 bg-white rounded-xl shadow-xl p-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-primary-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Avg. farmer income</p>
-                  <p className="font-bold text-gray-900">+38% increase</p>
-                </div>
-              </div>
+      <section className="harvest-ticker border-y border-lime-200/10 bg-[#0b1911] py-3" aria-label="Marketplace highlights">
+        <div className="mx-auto flex max-w-[1440px] items-center gap-4 overflow-hidden px-5 sm:px-8 lg:px-12">
+          <span className="relative z-10 flex shrink-0 items-center gap-2 rounded-full border border-lime-200/20 bg-lime-200/[.08] px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[.18em] text-lime-200"><span className="live-dot" /> Farm direct</span>
+          <div className="ticker-window min-w-0 flex-1">
+            <div className="ticker-track" aria-hidden="true">
+              {[0, 1].map((copy) => <div key={copy} className="ticker-group">{['Seasonal harvests', 'Verified growers', 'Transparent prices', 'Fresh to your doorstep', 'Support local farms'].map((item) => <span key={`${copy}-${item}`} className="ticker-item"><span className="text-lime-300">✳</span>{item}</span>)}</div>)}
             </div>
           </div>
         </div>
       </section>
 
       {/* ============ STATISTICS ============ */}
-      <section className="bg-primary-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            {stats.map((s) => (
-              <div key={s.label} className="text-center">
-                <s.icon className="w-7 h-7 text-primary-200 mx-auto mb-2" />
-                <p className="text-2xl sm:text-3xl font-extrabold text-white">{s.value}</p>
-                <p className="text-sm text-primary-200 mt-1">{s.label}</p>
-              </div>
-            ))}
-          </div>
+      <section data-reveal className="border-y border-[#e5e9e1] bg-white page-enter">
+        <div className="mx-auto grid max-w-[1440px] grid-cols-2 gap-y-6 px-5 py-8 sm:px-8 lg:grid-cols-4 lg:px-12 lg:py-9">
+          {stats.map((stat) => (
+            <div key={stat.label} className="flex items-center gap-3 border-[#e7ebe3] px-2 sm:px-6 lg:border-r last:border-r-0">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#eef4e9]"><stat.icon className="h-5 w-5 text-[#347546]" /></div>
+              <div><p className="text-xl font-semibold tracking-tight text-[#1c2a1f] sm:text-2xl">{stat.value}</p><p className="mt-0.5 text-[11px] font-medium text-[#7b857a] sm:text-xs">{stat.label}</p></div>
+            </div>
+          ))}
         </div>
       </section>
 
+      {featuredFarmers.length > 0 && <section data-reveal className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+        <div className="mb-6"><h2 className="section-title">Featured Farmers</h2><p className="mt-2 text-gray-500">Verified farms selected by our team</p></div>
+        <div className="stagger-grid grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{featuredFarmers.map((farmer) => <article data-reveal key={farmer._id} className="tilt-card card p-5">
+          <div className="flex items-center gap-3"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary-50 text-xl">🌱</div><div className="min-w-0"><h3 className="truncate font-bold text-gray-900">{farmer.farmName || farmer.name}</h3><p className="truncate text-xs text-gray-500">{farmer.farmLocation || farmer.location}</p></div></div>
+          <div className="mt-4 flex items-center justify-between"><span className="inline-flex items-center gap-1 text-sm text-amber-600"><Star className="h-4 w-4 fill-current" />{Number(farmer.rating || 0).toFixed(1)}</span><Link className="text-sm font-semibold text-primary-700 hover:underline" to={`/marketplace?farmer=${farmer._id}`}>Shop produce</Link></div>
+        </article>)}</div>
+      </section>}
+
       {/* ============ FEATURED PRODUCTS ============ */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <section data-reveal className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="flex items-end justify-between mb-8">
           <div>
             <h2 className="section-title">Featured Products</h2>
@@ -187,7 +110,7 @@ const Landing = () => {
         {loading ? (
           <LoadingSpinner label="Loading featured products..." />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="stagger-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {featured.map((p) => (
               <ProductCard key={p._id} product={p} />
             ))}
@@ -202,7 +125,7 @@ const Landing = () => {
       </section>
 
       {/* ============ HOW IT WORKS ============ */}
-      <section id="how-it-works" className="bg-white py-16">
+      <section data-reveal id="how-it-works" className="bg-white py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="section-title">How AgriConnect Works</h2>
@@ -234,7 +157,7 @@ const Landing = () => {
       </section>
 
       {/* ============ BENEFITS ============ */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <section data-reveal className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Farmer benefits */}
           <div className="card p-8 bg-gradient-to-br from-primary-50 to-white">
@@ -291,7 +214,7 @@ const Landing = () => {
       </section>
 
       {/* ============ LOGISTICS ============ */}
-      <section className="bg-gray-900 py-16">
+      <section data-reveal className="bg-gray-900 py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
@@ -335,20 +258,24 @@ const Landing = () => {
       </section>
 
       {/* ============ ABOUT / CTA ============ */}
-      <section id="about" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="card p-8 lg:p-12 bg-gradient-to-br from-primary-600 to-primary-700 text-center">
-          <h2 className="text-3xl font-bold text-white mb-4">Ready to Join AgriConnect?</h2>
-          <p className="text-primary-100 max-w-2xl mx-auto mb-8">
+      <section data-reveal id="about" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div className="relative overflow-hidden rounded-[2rem] border border-[#dbe6d4] bg-[#eaf1e4] p-8 text-center lg:p-12">
+          <div className="pointer-events-none absolute -right-12 -top-28 h-72 w-72 rounded-full border border-[#d3e0cc]" />
+          <div className="relative">
+          <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#5d795e]">Grow with us</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[#173b28]">Good things grow closer.</h2>
+          <p className="mx-auto mb-8 mt-4 max-w-2xl text-[#617264]">
             Whether you're a farmer looking for better prices, a buyer seeking fresh produce, or a
             delivery partner wanting to earn - AgriConnect is for you.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
-            <Link to="/register" className="btn bg-white text-primary-700 hover:bg-primary-50">
+            <Link to="/register" className="btn rounded-xl bg-[#173b28] text-white shadow-sm hover:bg-[#204b32]">
               Get Started Free <ArrowRight className="w-4 h-4" />
             </Link>
-            <Link to="/marketplace" className="btn border border-white/40 text-white hover:bg-white/10">
+            <Link to="/marketplace" className="btn border border-[#c7d7c0] bg-white/70 text-[#31533a] hover:bg-white">
               Explore Marketplace
             </Link>
+          </div>
           </div>
         </div>
       </section>

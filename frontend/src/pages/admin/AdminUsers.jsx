@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users, Search, UserCheck, UserX, Trash2, Filter } from 'lucide-react';
+import { Users, Search, UserCheck, UserX, Trash2, Filter, ShieldCheck, ShieldX, Star } from 'lucide-react';
 import { adminService } from '../../services';
 import { useToast } from '../../context/ToastContext';
 import { formatDate, initials } from '../../utils/helpers';
@@ -66,6 +66,26 @@ const AdminUsers = () => {
     }
   };
 
+  const reviewKyc = async (user, status) => {
+    try {
+      await adminService.reviewKyc(user._id, { status });
+      toast.success(status === 'verified' ? 'Farmer verified; listings are enabled' : 'Farmer verification rejected');
+      load();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Could not review farmer verification');
+    }
+  };
+
+  const toggleFeatured = async (user) => {
+    try {
+      await adminService.setFeatured(user._id, !user.isFeatured);
+      toast.success(user.isFeatured ? 'Removed from featured farmers' : 'Added to featured farmers');
+      load();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Could not update featured farmer');
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -112,7 +132,7 @@ const AdminUsers = () => {
                   <th className="px-4 py-3 font-semibold">Role</th>
                   <th className="px-4 py-3 font-semibold">Phone</th>
                   <th className="px-4 py-3 font-semibold">Joined</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Status / KYC</th>
                   <th className="px-4 py-3 font-semibold text-right">Actions</th>
                 </tr>
               </thead>
@@ -145,6 +165,7 @@ const AdminUsers = () => {
                       >
                         {u.isActive ? 'Active' : 'Inactive'}
                       </span>
+                      {u.role === 'farmer' && <span className={`badge ml-1 ${u.kycStatus === 'verified' ? 'bg-green-100 text-green-700' : u.kycStatus === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{u.kycStatus || 'not_submitted'}</span>}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
@@ -170,6 +191,13 @@ const AdminUsers = () => {
                             </button>
                           </>
                         )}
+                        {u.role === 'farmer' && u.kycStatus === 'pending' && (
+                          <>
+                            <button onClick={() => reviewKyc(u, 'verified')} className="p-2 rounded-lg text-green-700 hover:bg-green-50" title={`Verify ${u.kycDocumentType || 'identity'} ending ${u.kycLastFour || 'unknown'}`}><ShieldCheck className="w-4 h-4" /></button>
+                            <button onClick={() => reviewKyc(u, 'rejected')} className="p-2 rounded-lg text-red-600 hover:bg-red-50" title="Reject verification"><ShieldX className="w-4 h-4" /></button>
+                          </>
+                        )}
+                        {u.role === 'farmer' && u.kycStatus === 'verified' && <button onClick={() => toggleFeatured(u)} className={`p-2 rounded-lg ${u.isFeatured ? 'text-amber-600 bg-amber-50' : 'text-gray-400 hover:bg-amber-50 hover:text-amber-600'}`} title={u.isFeatured ? 'Remove from featured farmers' : 'Feature this farmer'}><Star className={`w-4 h-4 ${u.isFeatured ? 'fill-current' : ''}`} /></button>}
                       </div>
                     </td>
                   </tr>

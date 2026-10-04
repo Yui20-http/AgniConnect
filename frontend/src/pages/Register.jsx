@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Leaf, Mail, Lock, Phone, User, Sprout, ShoppingBag, Truck, ArrowRight, MapPin } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { useToast } from '../context/ToastContext';
 import { getErrorMessage } from '../utils/helpers';
+import { useLocale } from '../context/LocaleContext';
 
 /**
  * Register page with role selection (farmer / buyer / delivery).
@@ -32,6 +33,7 @@ const Register = () => {
   const { register } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { t } = useLocale();
 
   const dashboardPath = (role) =>
     ({ farmer: '/farmer', buyer: '/buyer', delivery: '/delivery', admin: '/admin' }[role] || '/');
@@ -56,7 +58,7 @@ const Register = () => {
     try {
       const { confirmPassword, ...payload } = form;
       const user = await register(payload);
-      toast.success('Registration successful! Welcome to AgriConnect.');
+      toast.success('Registration successful. Welcome to AgriConnect!');
       navigate(dashboardPath(user.role));
     } catch (err) {
       toast.error(getErrorMessage(err));
@@ -95,8 +97,8 @@ const Register = () => {
             </span>
           </Link>
 
-          <h1 className="text-3xl font-bold text-gray-900">Create your account</h1>
-          <p className="text-gray-500 mt-2 mb-6">Join the agricultural marketplace</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('Create your account')}</h1>
+          <p className="text-gray-500 mt-2 mb-6">{t('Join the agricultural marketplace')}</p>
 
           {/* Role selector */}
           <div className="grid grid-cols-3 gap-2 mb-6">
@@ -112,14 +114,14 @@ const Register = () => {
                 }`}
               >
                 <r.icon className={`w-6 h-6 mx-auto mb-1 ${form.role === r.value ? 'text-primary-600' : 'text-gray-400'}`} />
-                <p className="text-xs font-semibold text-gray-700">{r.label}</p>
+                <p className="text-xs font-semibold text-gray-700">{t(r.label)}</p>
               </button>
             ))}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label">Full Name</label>
+                <label className="label">{t('Full Name')}</label>
               <div className="relative">
                 <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
@@ -135,7 +137,7 @@ const Register = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="label">Email</label>
+                    <label className="label">{t('Email')}</label>
                 <div className="relative">
                   <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
@@ -149,7 +151,7 @@ const Register = () => {
                 </div>
               </div>
               <div>
-                <label className="label">Phone</label>
+                <label className="label">{t('Phone')}</label>
                 <div className="relative">
                   <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
@@ -265,7 +267,7 @@ const Register = () => {
             {form.role === 'delivery' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="label">Vehicle Type</label>
+                  <label className="label">{t('Vehicle Type')}</label>
                   <input
                     type="text"
                     value={form.vehicleType}
@@ -275,7 +277,7 @@ const Register = () => {
                   />
                 </div>
                 <div>
-                  <label className="label">Vehicle Number</label>
+                  <label className="label">{t('Vehicle Number')}</label>
                   <input
                     type="text"
                     value={form.vehicleNumber}
@@ -288,7 +290,7 @@ const Register = () => {
             )}
 
             <div>
-              <label className="label">Address / Location</label>
+              <label className="label">{t('Address / Location')}</label>
               <div className="relative">
                 <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
@@ -303,7 +305,7 @@ const Register = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="label">Password</label>
+                <label className="label">{t('Password')}</label>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
@@ -317,7 +319,7 @@ const Register = () => {
                 </div>
               </div>
               <div>
-                <label className="label">Confirm Password</label>
+                <label className="label">{t('Confirm Password')}</label>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
@@ -333,14 +335,14 @@ const Register = () => {
             </div>
 
             <button type="submit" disabled={loading} className="btn-primary w-full h-11">
-              {loading ? 'Creating account...' : 'Create Account'} <ArrowRight className="w-4 h-4" />
+              {loading ? 'Creating account...' : t('Create Account')} <ArrowRight className="w-4 h-4" />
             </button>
           </form>
 
           <p className="text-center text-sm text-gray-500 mt-6">
-            Already have an account?{' '}
+            {t('Already have an account?')}{' '}
             <Link to="/login" className="link">
-              Login here
+              {t('Login here')}
             </Link>
           </p>
         </div>

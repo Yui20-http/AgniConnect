@@ -2,6 +2,45 @@ const Product = require('../models/Product');
 const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const { emitToAll } = require('../utils/socket');
+const { geocodeLocation } = require('../utils/geo');
+
+const distanceKm = (a, b) => {
+  const radians = (degrees) => (degrees * Math.PI) / 180;
+  const dLat = radians(b.lat - a.lat);
+  const dLng = radians(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(radians(a.lat)) * Math.cos(radians(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+};
+
+const parseBulkPricing = (value) => {
+  if (value === undefined || value === null || value === '') return [];
+  let tiers = value;
+  if (typeof tiers === 'string') {
+    try {
+      tiers = JSON.parse(tiers);
+    } catch {
+      const error = new Error('Bulk pricing must be valid JSON tier data');
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+  if (!Array.isArray(tiers)) {
+    const error = new Error('Bulk pricing must be a list of quantity and price tiers');
+    error.statusCode = 400;
+    throw error;
+  }
+  return tiers.map((tier) => ({ minQty: Number(tier.minQty), pricePerUnit: Number(tier.pricePerUnit) }));
+};
+
+const validatePreOrderSchedule = (isPreOrder, harvestDate) => {
+  if (!isPreOrder) return;
+  const date = new Date(harvestDate);
+  if (!harvestDate || Number.isNaN(date.getTime()) || date <= new Date()) {
+    const error = new Error('Pre-orders require a valid future harvest date');
+    error.statusCode = 400;
+    throw error;
+  }
+};
 
 /**
  * @desc    Get all products with search, filter, sort and pagination
@@ -13,7 +52,7 @@ const { emitToAll } = require('../utils/socket');
  *   sort (price_asc | price_desc | newest | popular), page, limit, available
  */
 const getProducts = asyncHandler(async (req, res) => {
-  const { search, category, location, farmer, minPrice, maxPrice, sort, page = 1, limit = 12, available } = req.query;
+  const { search, category, location, farmer, minPrice, maxPrice, sort, page = 1, limit = 12, available, organicOnly, freshnessDays, nearLat, nearLng, radiusKm } = req.query;
 
   const query = {};
 
@@ -40,6 +79,38 @@ const getProducts = asyncHandler(async (req, res) => {
   if (available === 'true') query.isAvailable = true;
   if (available === 'false') query.isAvailable = false;
 
+  if (organicOnly === 'true') {
+    const organicFarmers = await User.find({ role: 'farmer', farmingType: 'organic' }).select('_id').lean();
+    const organicIds = organicFarmers.map((record) => String(record._id));
+    if (query.farmer) {
+      if (!organicIds.includes(String(query.farmer))) query.farmer = { $in: [] };
+    } else {
+      query.farmer = { $in: organicFarmers.map((record) => record._id) };
+    }
+  }
+
+  const freshnessWindow = Number(freshnessDays);
+  if (Number.isFinite(freshnessWindow) && freshnessWindow > 0) {
+    const now = new Date();
+    const earliestHarvest = new Date(now.getTime() - freshnessWindow * 24 * 60 * 60 * 1000);
+    query.harvestDate = { $gte: earliestHarvest, $lte: now };
+  }
+
+  const verifiedFarmerIds = (await User.find({ role: 'farmer', kycStatus: 'verified' }).select('_id').lean()).map((farmer) => farmer._id);
+  if (query.farmer) {
+    if (!verifiedFarmerIds.some((id) => String(id) === String(query.farmer))) query.farmer = { $in: [] };
+  } else {
+    query.farmer = { $in: verifiedFarmerIds };
+  }
+
+  const hasNearPoint = nearLat !== undefined || nearLng !== undefined || radiusKm !== undefined;
+  const origin = { lat: Number(nearLat), lng: Number(nearLng) };
+  const radius = Number(radiusKm);
+  if (hasNearPoint && (!Number.isFinite(origin.lat) || !Number.isFinite(origin.lng) || !Number.isFinite(radius) || radius <= 0 || radius > 500)) {
+    res.status(400);
+    throw new Error('Provide valid nearLat, nearLng and radiusKm (up to 500 km)');
+  }
+
   if (minPrice || maxPrice) {
     query.pricePerUnit = {};
     if (minPrice) query.pricePerUnit.$gte = Number(minPrice);
@@ -56,14 +127,43 @@ const getProducts = asyncHandler(async (req, res) => {
   const limitNum = Math.max(1, Number(limit));
   const skip = (pageNum - 1) * limitNum;
 
-  const [products, total] = await Promise.all([
-    Product.find(query)
-      .populate('farmer', 'name farmName farmLocation location phone profileImage rating upiId')
+  let products;
+  let total;
+  if (hasNearPoint) {
+    const candidates = await Product.find(query)
+      .populate('farmer', 'name farmName farmLocation location phone profileImage rating upiId farmingType')
       .sort(sortOption)
-      .skip(skip)
-      .limit(limitNum),
-    Product.countDocuments(query),
-  ]);
+      .lean();
+    const nearby = candidates.flatMap((product) => {
+      const productCoordinates = product.coordinates;
+      const lat = productCoordinates?.lat != null ? Number(productCoordinates.lat) : geocodeLocation(product.location || product.farmer?.farmLocation || product.farmer?.location)?.lat;
+      const lng = productCoordinates?.lng != null ? Number(productCoordinates.lng) : geocodeLocation(product.location || product.farmer?.farmLocation || product.farmer?.location)?.lng;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
+      const distance = distanceKm(origin, { lat, lng });
+      return distance <= radius ? [{ ...product, coordinates: { lat, lng }, distanceKm: Number(distance.toFixed(1)) }] : [];
+    });
+    total = nearby.length;
+    products = nearby.slice(skip, skip + limitNum);
+  } else {
+    [products, total] = await Promise.all([
+      Product.find(query)
+        .populate('farmer', 'name farmName farmLocation location phone profileImage rating upiId farmingType')
+        .sort(sortOption)
+        .skip(skip)
+        .limit(limitNum),
+      Product.countDocuments(query),
+    ]);
+  }
+
+  products = products.map((record) => {
+    const product = typeof record.toObject === 'function' ? record.toObject() : record;
+    const coordinates = product.coordinates || {};
+    if (coordinates.lat == null || coordinates.lng == null) {
+      const locationCoordinates = geocodeLocation(product.location || product.farmer?.farmLocation || product.farmer?.location);
+      if (locationCoordinates) product.coordinates = locationCoordinates;
+    }
+    return product;
+  });
 
   res.json({
     success: true,
@@ -85,9 +185,13 @@ const getProducts = asyncHandler(async (req, res) => {
 const getProductById = asyncHandler(async (req, res) => {
   const product = await Product.findById(req.params.id).populate(
     'farmer',
-    'name farmName farmLocation location address phone profileImage rating upiId createdAt'
+    'name farmName farmLocation location address phone profileImage rating upiId farmingType createdAt kycStatus'
   );
   if (!product) {
+    res.status(404);
+    throw new Error('Product not found');
+  }
+  if (product.farmer?.kycStatus !== 'verified') {
     res.status(404);
     throw new Error('Product not found');
   }
@@ -110,6 +214,10 @@ const getMyProducts = asyncHandler(async (req, res) => {
  * @access  Private/Farmer
  */
 const createProduct = asyncHandler(async (req, res) => {
+  if (req.user.kycStatus !== 'verified') {
+    res.status(403);
+    throw new Error('Complete farmer verification before creating product listings');
+  }
   const { name, category, description, quantity, unit, pricePerUnit, minOrderQuantity, harvestDate, location, isAvailable, isPreOrder, coordinates, bulkPricing } = req.body;
 
   if (!name || !category || quantity === undefined || !pricePerUnit) {
@@ -118,12 +226,18 @@ const createProduct = asyncHandler(async (req, res) => {
   }
 
   const uploadedImage = req.fileUrl || (req.file && req.file.path) || req.body.image || '';
-  const parsedBulkPricing = Array.isArray(bulkPricing)
-    ? bulkPricing.map((tier) => ({
-        minQty: Number(tier?.minQty || 1),
-        pricePerUnit: Number(tier?.pricePerUnit || 0),
-      }))
-    : [];
+  const preOrder = isPreOrder === 'true' || isPreOrder === true;
+  validatePreOrderSchedule(preOrder, harvestDate);
+  let providedCoordinates = coordinates || req.body.coordinates;
+  if (typeof providedCoordinates === 'string') {
+    try { providedCoordinates = JSON.parse(providedCoordinates); } catch { providedCoordinates = null; }
+  }
+  const productLocation = location || req.user.farmLocation || req.user.location || '';
+  const parsedBulkPricing = parseBulkPricing(bulkPricing);
+  if (parsedBulkPricing.some((tier) => !Number.isInteger(tier.minQty) || tier.minQty < 1 || !Number.isFinite(tier.pricePerUnit) || tier.pricePerUnit < 0)) {
+    res.status(400);
+    throw new Error('Each wholesale tier needs a positive whole quantity and a non-negative price');
+  }
 
   const product = await Product.create({
     farmer: req.user._id,
@@ -137,10 +251,10 @@ const createProduct = asyncHandler(async (req, res) => {
     minOrderQuantity: Number(minOrderQuantity) || 1,
     bulkPricing: parsedBulkPricing,
     harvestDate: harvestDate || undefined,
-    isPreOrder: isPreOrder === 'true' || isPreOrder === true,
-    location: location || req.user.farmLocation || req.user.location || '',
+    isPreOrder: preOrder,
+    location: productLocation,
     isAvailable: isAvailable === undefined ? true : isAvailable === 'true' || isAvailable === true,
-    coordinates: coordinates || { lat: null, lng: null },
+    coordinates: providedCoordinates || geocodeLocation(productLocation) || { lat: null, lng: null },
   });
 
   emitToAll('product:updated', { action: 'created', productId: product._id });
@@ -165,6 +279,10 @@ const updateProduct = asyncHandler(async (req, res) => {
     res.status(403);
     throw new Error('You can only edit your own products');
   }
+  if (req.user.role === 'farmer' && req.user.kycStatus !== 'verified' && (req.body.isAvailable === undefined || req.body.isAvailable === 'true' || req.body.isAvailable === true)) {
+    res.status(403);
+    throw new Error('Complete farmer verification before publishing or reactivating listings');
+  }
 
   const fields = ['name', 'category', 'description', 'quantity', 'unit', 'pricePerUnit', 'minOrderQuantity', 'harvestDate', 'location', 'isAvailable', 'isPreOrder', 'coordinates'];
   fields.forEach((field) => {
@@ -179,13 +297,25 @@ const updateProduct = asyncHandler(async (req, res) => {
     }
   });
 
+  validatePreOrderSchedule(product.isPreOrder, req.body.harvestDate || product.harvestDate);
+
   if (req.body.bulkPricing !== undefined) {
-    product.bulkPricing = Array.isArray(req.body.bulkPricing)
-      ? req.body.bulkPricing.map((tier) => ({
-          minQty: Number(tier?.minQty || 1),
-          pricePerUnit: Number(tier?.pricePerUnit || 0),
-        }))
-      : [];
+    product.bulkPricing = parseBulkPricing(req.body.bulkPricing);
+    if (product.bulkPricing.some((tier) => !Number.isInteger(tier.minQty) || tier.minQty < 1 || !Number.isFinite(tier.pricePerUnit) || tier.pricePerUnit < 0)) {
+      res.status(400);
+      throw new Error('Each wholesale tier needs a positive whole quantity and a non-negative price');
+    }
+  }
+
+  if (req.body.coordinates !== undefined) {
+    try {
+      product.coordinates = typeof req.body.coordinates === 'string' ? JSON.parse(req.body.coordinates) : req.body.coordinates;
+    } catch {
+      res.status(400);
+      throw new Error('Coordinates must be valid JSON');
+    }
+  } else if (req.body.location) {
+    product.coordinates = geocodeLocation(req.body.location) || { lat: null, lng: null };
   }
 
   if (req.fileUrl) product.image = req.fileUrl;
@@ -252,6 +382,34 @@ const getProductNames = asyncHandler(async (req, res) => {
   res.json({ success: true, data: names.sort() });
 });
 
+/**
+ * @desc    Suggest and optionally apply a market-based price to a product
+ * @route   POST /api/products/:id/apply-market-price
+ * @access  Private/Farmer (owner)
+ */
+const applyMarketPrice = asyncHandler(async (req, res) => {
+  const { suggestedPrice } = req.body;
+  if (!suggestedPrice || Number(suggestedPrice) <= 0) {
+    res.status(400);
+    throw new Error('Please provide a valid suggested price');
+  }
+
+  const product = await Product.findById(req.params.id);
+  if (!product) {
+    res.status(404);
+    throw new Error('Product not found');
+  }
+  if (String(product.farmer) !== String(req.user._id)) {
+    res.status(403);
+    throw new Error('You can only update your own products');
+  }
+
+  product.pricePerUnit = Number(Number(suggestedPrice).toFixed(2));
+  const updated = await product.save();
+  emitToAll('product:updated', { action: 'updated', productId: updated._id });
+  res.json({ success: true, message: 'Price updated from market reference', data: updated });
+});
+
 module.exports = {
   getProducts,
   getProductById,
@@ -261,4 +419,5 @@ module.exports = {
   deleteProduct,
   compareProducts,
   getProductNames,
+  applyMarketPrice,
 };

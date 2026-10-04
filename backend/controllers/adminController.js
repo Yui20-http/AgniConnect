@@ -2,8 +2,10 @@ const User = require('../models/User');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const Delivery = require('../models/Delivery');
+const AuditLog = require('../models/AuditLog');
 const asyncHandler = require('../utils/asyncHandler');
 const { ORDER_STATUS, DELIVERY_STATUS } = require('../config/constants');
+const { recordAudit } = require('../utils/auditLog');
 
 /**
  * @desc    Admin dashboard statistics
@@ -86,6 +88,7 @@ const toggleUserStatus = asyncHandler(async (req, res) => {
   }
   user.isActive = !user.isActive;
   await user.save();
+  recordAudit(req, user.isActive ? 'user.activated' : 'user.deactivated', 'User', user._id, `Role: ${user.role}`);
   res.json({ success: true, message: `User ${user.isActive ? 'activated' : 'deactivated'}`, data: user });
 });
 
@@ -105,7 +108,74 @@ const deleteUser = asyncHandler(async (req, res) => {
     throw new Error('Cannot delete an admin account');
   }
   await user.deleteOne();
+  recordAudit(req, 'user.deleted', 'User', user._id, `Role: ${user.role}; email: ${user.email}`);
   res.json({ success: true, message: 'User deleted' });
+});
+
+const reviewFarmerKyc = asyncHandler(async (req, res) => {
+  const { status, note = '' } = req.body || {};
+  if (!['verified', 'rejected'].includes(status)) {
+    res.status(400);
+    throw new Error('KYC review status must be verified or rejected');
+  }
+  const farmer = await User.findOne({ _id: req.params.id, role: 'farmer' });
+  if (!farmer) {
+    res.status(404);
+    throw new Error('Farmer not found');
+  }
+  if (status === 'verified' && !farmer.kycSubmittedAt) {
+    res.status(400);
+    throw new Error('Farmer has not submitted a verification request');
+  }
+  farmer.kycStatus = status;
+  farmer.kycReviewedAt = new Date();
+  farmer.kycReviewNote = String(note).slice(0, 500);
+  await farmer.save();
+  recordAudit(req, `farmer.kyc.${status}`, 'User', farmer._id, farmer.kycReviewNote);
+  res.json({ success: true, message: `Farmer KYC ${status}`, data: farmer });
+});
+
+const toggleFeaturedFarmer = asyncHandler(async (req, res) => {
+  const farmer = await User.findOne({ _id: req.params.id, role: 'farmer' });
+  if (!farmer) {
+    res.status(404);
+    throw new Error('Farmer not found');
+  }
+  if (req.body?.featured && farmer.kycStatus !== 'verified') {
+    res.status(400);
+    throw new Error('Only verified farmers can be featured');
+  }
+  farmer.isFeatured = Boolean(req.body?.featured);
+  await farmer.save();
+  recordAudit(req, farmer.isFeatured ? 'farmer.featured' : 'farmer.unfeatured', 'User', farmer._id);
+  res.json({ success: true, data: farmer });
+});
+
+const getAuditLogs = asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.action) filter.action = { $regex: String(req.query.action).slice(0, 80), $options: 'i' };
+  const logs = await AuditLog.find(filter).populate('actor', 'name email role').sort({ createdAt: -1 }).limit(500);
+  res.json({ success: true, data: logs });
+});
+
+const csvCell = (value) => {
+  let text = value == null ? '' : String(value);
+  if (/^[=+@\-\t\r]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+};
+
+const exportOrdersCsv = asyncHandler(async (_req, res) => {
+  const orders = await Order.find().populate('buyer', 'name email phone').populate('farmer', 'name farmName').sort({ createdAt: -1 }).limit(20000).lean();
+  const columns = ['Order Number', 'Created At', 'Buyer', 'Buyer Email', 'Buyer Phone', 'Farmer', 'Status', 'Payment Status', 'Subtotal INR', 'Delivery Fee INR', 'Total INR'];
+  const rows = orders.map((order) => [
+    order.orderNumber, order.createdAt?.toISOString(), order.buyer?.name, order.buyer?.email, order.buyer?.phone,
+    order.farmer?.farmName || order.farmer?.name, order.status, order.paymentStatus,
+    order.totalAmount, order.deliveryFee, order.grandTotal,
+  ]);
+  const csv = [columns, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="agriconnect-orders.csv"');
+  res.send(`\uFEFF${csv}`);
 });
 
 /**
@@ -172,4 +242,7 @@ const getCharts = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { getStats, getUsers, toggleUserStatus, deleteUser, getCharts };
+module.exports = {
+  getStats, getUsers, toggleUserStatus, deleteUser, getCharts,
+  reviewFarmerKyc, toggleFeaturedFarmer, getAuditLogs, exportOrdersCsv,
+};

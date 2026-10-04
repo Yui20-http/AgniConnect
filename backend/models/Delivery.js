@@ -36,6 +36,21 @@ const deliverySchema = new mongoose.Schema(
       index: true,
     },
     distanceKm: { type: Number, default: 0 },
+    courierDistanceKm: { type: Number, default: null },
+    currentLocation: {
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+      heading: { type: Number, default: null },
+      speedKph: { type: Number, default: null },
+    },
+    locationUpdatedAt: { type: Date, default: null },
+    deliveryOtpHash: { type: String, default: '', select: false },
+    proofOfDelivery: {
+      recipientName: { type: String, default: '' },
+      note: { type: String, default: '' },
+      photoUrl: { type: String, default: '' },
+      confirmedAt: { type: Date, default: null },
+    },
     estimatedDelivery: { type: Date, default: null },
     statusHistory: [
       {

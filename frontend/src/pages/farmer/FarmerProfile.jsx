@@ -1,9 +1,11 @@
 import ProfileForm from '../../components/ProfileForm';
+import FarmerKycForm from '../../components/FarmerKycForm';
 
 /**
  * FarmerProfile - farmer account details + farm information.
  */
 const FarmerProfile = () => (
+  <div className="space-y-6">
   <ProfileForm
     title="Farmer Profile"
     subtitle="Manage your personal and farm details"
@@ -27,6 +29,8 @@ const FarmerProfile = () => (
       { key: 'upiId', label: 'UPI ID for Payouts', placeholder: 'e.g. patil.farm@upi', required: true },
     ]}
   />
+  <FarmerKycForm />
+  </div>
 );
 
 export default FarmerProfile;

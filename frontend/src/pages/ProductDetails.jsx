@@ -13,11 +13,13 @@ import {
   User,
   Phone,
   CheckCircle2,
+  Heart,
 } from 'lucide-react';
-import { productService } from '../services';
+import { productService, userService } from '../services';
 import LoadingSpinner from '../components/LoadingSpinner';
+import ReviewSection from '../components/ReviewSection';
 import { useCart } from '../context/CartContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { useToast } from '../context/ToastContext';
 import { formatCurrency, formatDate, categoryIcons, getErrorMessage } from '../utils/helpers';
 
@@ -31,6 +33,7 @@ const ProductDetails = () => {
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [adding, setAdding] = useState(false);
+  const [favorited, setFavorited] = useState(false);
   const { addToCart } = useCart();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -50,6 +53,17 @@ const ProductDetails = () => {
     };
     load();
   }, [id, navigate, toast]);
+
+  useEffect(() => {
+    const farmerId = product?.farmer?._id || product?.farmer;
+    if (!farmerId || user?.role !== 'buyer') {
+      setFavorited(false);
+      return;
+    }
+    userService.getFavorites()
+      .then(({ data }) => setFavorited((data.data || []).some((farmer) => String(farmer._id) === String(farmerId))))
+      .catch(() => setFavorited(false));
+  }, [product, user?.role]);
 
   if (loading) return <LoadingSpinner fullScreen label="Loading product..." />;
   if (!product) return null;
@@ -93,6 +107,22 @@ const ProductDetails = () => {
     }
   };
 
+  const handleFavorite = async () => {
+    if (!user || user.role !== 'buyer') {
+      toast.warning('Sign in as a buyer to save favorite farmers.');
+      navigate('/login');
+      return;
+    }
+    try {
+      const farmerId = farmer._id || farmer;
+      const { data } = await userService.toggleFavorite(farmerId);
+      setFavorited(Boolean(data.data?.favorited));
+      toast.success(data.message);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Could not update favorites.');
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <Link to="/marketplace" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-primary-600 mb-6">
@@ -132,6 +162,11 @@ const ProductDetails = () => {
             <span className="flex items-center gap-1">
               <MapPin className="w-4 h-4" /> {product.location || farmer.farmLocation || 'India'}
             </span>
+            {product.rating > 0 && (
+              <span className="flex items-center gap-1 text-amber-500" aria-label={`${product.rating} out of 5 stars`}>
+                <Star className="w-4 h-4 fill-amber-500" /> {product.rating} ({product.reviewCount || 0})
+              </span>
+            )}
             {farmer.rating && (
               <span className="flex items-center gap-1 text-amber-500">
                 <Star className="w-4 h-4 fill-amber-500" /> {farmer.rating}
@@ -226,7 +261,12 @@ const ProductDetails = () => {
 
           {/* Farmer info */}
           <div className="mt-6 card p-4">
-            <p className="text-xs text-gray-400 mb-2 uppercase tracking-wide font-semibold">Sold by</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold">Sold by</p>
+              <button type="button" onClick={handleFavorite} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50" aria-pressed={favorited}>
+                <Heart className={`h-4 w-4 ${favorited ? 'fill-current' : ''}`} /> {favorited ? 'Favorited' : 'Favorite farmer'}
+              </button>
+            </div>
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center">
                 <User className="w-6 h-6 text-primary-600" />
@@ -250,6 +290,7 @@ const ProductDetails = () => {
           </div>
         </div>
       </div>
+      <ReviewSection type="product" targetId={product._id} title="Product reviews" />
     </div>
   );
 };

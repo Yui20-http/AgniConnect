@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { User, Save, Mail, Phone, MapPin, Lock } from 'lucide-react';
 import { userService } from '../services';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { useToast } from '../context/ToastContext';
 import { initials } from '../utils/helpers';
 

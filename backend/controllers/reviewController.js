@@ -37,12 +37,16 @@ const updateFarmerRating = async (farmerId) => {
 const buyerHasPurchasedProduct = async (buyerId, productId) => {
   const orderIds = await OrderItem.find({ product: productId }).distinct('order');
   if (!orderIds.length) return false;
-  const order = await Order.findOne({ _id: { $in: orderIds }, buyer: buyerId }).lean();
+  const order = await Order.findOne({
+    _id: { $in: orderIds },
+    buyer: buyerId,
+    status: 'Delivered',
+  }).lean();
   return Boolean(order);
 };
 
 const buyerHasPurchasedFromFarmer = async (buyerId, farmerId) => {
-  const order = await Order.findOne({ buyer: buyerId, farmer: farmerId }).lean();
+  const order = await Order.findOne({ buyer: buyerId, farmer: farmerId, status: 'Delivered' }).lean();
   return Boolean(order);
 };
 

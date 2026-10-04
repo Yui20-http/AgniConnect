@@ -1,7 +1,7 @@
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const asyncHandler = require('../utils/asyncHandler');
-const { DELIVERY_FEE } = require('../config/constants');
+const { calculateCartTotals } = require('../utils/commerce');
 
 /**
  * Helper: load the buyer's cart with populated products.
@@ -24,26 +24,22 @@ const loadCart = async (buyerId) => {
 /**
  * Build a summary (subtotal, delivery fee, total) from a populated cart.
  */
-const buildSummary = (cart) => {
-  let subtotal = 0;
-  const items = cart.items
-    .filter((item) => item.product) // ignore products that were deleted
-    .map((item) => {
-      const lineTotal = item.product.pricePerUnit * item.quantity;
-      subtotal += lineTotal;
-      return {
-        product: item.product,
-        quantity: item.quantity,
-        lineTotal,
-      };
-    });
-
-  const deliveryFee = items.length > 0 ? DELIVERY_FEE : 0;
+const buildSummary = (cart, deliveryLocation = '') => {
+  const validItems = cart.items.filter((item) => item.product);
+  const quote = calculateCartTotals(validItems, deliveryLocation);
+  const items = quote.lines.map(({ item, unitPrice, lineTotal }) => ({
+    product: item.product,
+    quantity: item.quantity,
+    unitPrice,
+    lineTotal,
+  }));
   return {
     items,
-    subtotal,
-    deliveryFee,
-    total: subtotal + deliveryFee,
+    subtotal: quote.subtotal,
+    deliveryFee: quote.deliveryFee,
+    deliveryGroups: Object.keys(quote.groups).length,
+    deliveryEstimates: quote.deliveryByFarmer,
+    total: quote.total,
   };
 };
 
@@ -54,7 +50,13 @@ const buildSummary = (cart) => {
  */
 const getCart = asyncHandler(async (req, res) => {
   const cart = await loadCart(req.user._id);
-  res.json({ success: true, data: buildSummary(cart) });
+  res.json({ success: true, data: buildSummary(cart, req.user.location || req.user.address || '') });
+});
+
+const getCartQuote = asyncHandler(async (req, res) => {
+  const cart = await loadCart(req.user._id);
+  const deliveryLocation = req.body?.deliveryLocation || req.user.location || req.user.address || '';
+  res.json({ success: true, data: buildSummary(cart, deliveryLocation) });
 });
 
 /**
@@ -98,7 +100,7 @@ const addToCart = asyncHandler(async (req, res) => {
 
   await cart.save();
   const populated = await loadCart(req.user._id);
-  res.json({ success: true, message: 'Added to cart', data: buildSummary(populated) });
+  res.json({ success: true, message: 'Added to cart', data: buildSummary(populated, req.user.location || req.user.address || '') });
 });
 
 /**
@@ -135,7 +137,7 @@ const updateCartItem = asyncHandler(async (req, res) => {
   item.quantity = qty;
   await cart.save();
   const populated = await loadCart(req.user._id);
-  res.json({ success: true, message: 'Cart updated', data: buildSummary(populated) });
+  res.json({ success: true, message: 'Cart updated', data: buildSummary(populated, req.user.location || req.user.address || '') });
 });
 
 /**
@@ -148,7 +150,7 @@ const removeFromCart = asyncHandler(async (req, res) => {
   cart.items = cart.items.filter((i) => String(i.product._id) !== String(req.params.productId));
   await cart.save();
   const populated = await loadCart(req.user._id);
-  res.json({ success: true, message: 'Removed from cart', data: buildSummary(populated) });
+  res.json({ success: true, message: 'Removed from cart', data: buildSummary(populated, req.user.location || req.user.address || '') });
 });
 
 /**
@@ -163,4 +165,4 @@ const clearCart = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Cart cleared', data: { items: [], subtotal: 0, deliveryFee: 0, total: 0 } });
 });
 
-module.exports = { getCart, addToCart, updateCartItem, removeFromCart, clearCart, buildSummary, loadCart };
+module.exports = { getCart, getCartQuote, addToCart, updateCartItem, removeFromCart, clearCart, buildSummary, loadCart };

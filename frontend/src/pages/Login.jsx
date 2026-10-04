@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Leaf, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { useToast } from '../context/ToastContext';
 import { getErrorMessage } from '../utils/helpers';
 
@@ -100,6 +100,10 @@ const Login = () => {
               {loading ? 'Logging in...' : 'Login'} <ArrowRight className="w-4 h-4" />
             </button>
           </form>
+
+          <p className="mt-4 text-center text-sm">
+            <Link to="/forgot-password" className="link">Forgot your password?</Link>
+          </p>
 
           <p className="text-center text-sm text-gray-500 mt-6">
             Don't have an account?{' '}

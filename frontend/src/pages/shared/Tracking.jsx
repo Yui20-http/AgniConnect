@@ -10,7 +10,7 @@ import {
   Clock,
   CheckCircle2,
 } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { orderService, deliveryService } from '../../services';
 import { useToast } from '../../context/ToastContext';
@@ -41,11 +41,26 @@ const deliveryIcon = L.divIcon({
   iconAnchor: [15, 30],
 });
 
+const courierIcon = L.divIcon({
+  className: '',
+  html: '<div style="background:#2563eb;width:20px;height:20px;border-radius:50%;border:4px solid white;box-shadow:0 1px 8px rgba(0,0,0,.45)"></div>',
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
+});
+
+const MapRecenter = ({ point }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (point?.lat != null && point?.lng != null) map.panTo([point.lat, point.lng]);
+  }, [map, point?.lat, point?.lng]);
+  return null;
+};
+
 const Tracking = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { lastOrderUpdate } = useSocket();
+  const { lastOrderUpdate, socket } = useSocket();
   const [order, setOrder] = useState(null);
   const [delivery, setDelivery] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -80,6 +95,16 @@ const Tracking = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastOrderUpdate]);
 
+  useEffect(() => {
+    if (!socket) return undefined;
+    const onLocation = (update) => {
+      if (String(update.deliveryId) !== String(delivery?._id)) return;
+      setDelivery((current) => current ? { ...current, currentLocation: update.currentLocation, locationUpdatedAt: update.locationUpdatedAt } : current);
+    };
+    socket.on('delivery:location', onLocation);
+    return () => socket.off('delivery:location', onLocation);
+  }, [socket, delivery?._id]);
+
   if (loading) return <LoadingSpinner fullScreen label="Loading tracking..." />;
   if (!order) return null;
 
@@ -91,8 +116,15 @@ const Tracking = () => {
     drop?.lat != null &&
     drop?.lng != null;
 
-  const center = hasCoords
-    ? [(pickup.lat + drop.lat) / 2, (pickup.lng + drop.lng) / 2]
+  const courierPosition = delivery?.currentLocation?.lat != null && delivery?.currentLocation?.lng != null
+    ? delivery.currentLocation
+    : null;
+  const hasMapPosition = hasCoords || Boolean(courierPosition);
+
+  const center = courierPosition
+    ? [courierPosition.lat, courierPosition.lng]
+    : hasCoords
+      ? [(pickup.lat + drop.lat) / 2, (pickup.lng + drop.lng) / 2]
     : [19.076, 72.8777]; // Mumbai fallback
 
   const partner = delivery?.deliveryPartner || order?.deliveryPartner;
@@ -133,7 +165,7 @@ const Tracking = () => {
               <MapPin className="w-4 h-4 text-primary-600" />
               <h3 className="font-bold text-gray-900">Live Route</h3>
             </div>
-            {hasCoords ? (
+            {hasMapPosition ? (
               <div className="h-72 w-full">
                 <MapContainer
                   center={center}
@@ -141,31 +173,26 @@ const Tracking = () => {
                   scrollWheelZoom={false}
                   style={{ height: '100%', width: '100%' }}
                 >
+                  <MapRecenter point={courierPosition} />
                   <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
-                  <Marker position={[pickup.lat, pickup.lng]} icon={pickupIcon}>
-                    <Popup>
-                      <strong>Pickup</strong>
-                      <br />
-                      {delivery?.pickupLocation || order.pickupLocation || 'Farm'}
-                    </Popup>
-                  </Marker>
-                  <Marker position={[drop.lat, drop.lng]} icon={deliveryIcon}>
-                    <Popup>
-                      <strong>Delivery</strong>
-                      <br />
-                      {delivery?.deliveryLocation || order.deliveryAddress}
-                    </Popup>
-                  </Marker>
-                  <Polyline
+                  {hasCoords && <Marker position={[pickup.lat, pickup.lng]} icon={pickupIcon}>
+                    <Popup><strong>Pickup</strong><br />{delivery?.pickupLocation || order.pickupLocation || 'Farm'}</Popup>
+                  </Marker>}
+                  {hasCoords && <Marker position={[drop.lat, drop.lng]} icon={deliveryIcon}>
+                    <Popup><strong>Delivery</strong><br />{delivery?.deliveryLocation || order.deliveryAddress}</Popup>
+                  </Marker>}
+                  {courierPosition && <Marker position={[courierPosition.lat, courierPosition.lng]} icon={courierIcon}><Popup><strong>Courier live location</strong><br />Updated {delivery.locationUpdatedAt ? formatDateTime(delivery.locationUpdatedAt) : 'just now'}</Popup></Marker>}
+                  {hasCoords && <Polyline
                     positions={[
                       [pickup.lat, pickup.lng],
+                      ...(courierPosition ? [[courierPosition.lat, courierPosition.lng]] : []),
                       [drop.lat, drop.lng],
                     ]}
                     pathOptions={{ color: '#16a34a', weight: 3, dashArray: '8 8' }}
-                  />
+                  />}
                 </MapContainer>
               </div>
             ) : (
@@ -218,6 +245,8 @@ const Tracking = () => {
                     <StatusBadge status={delivery.status} />
                   </div>
                 )}
+                {delivery?.status === 'Assigned' && <p className="mt-2 text-xs text-gray-500">Your delivery OTP was sent in the buyer’s AgriConnect notifications. Share it with the courier at handoff.</p>}
+                {delivery?.locationUpdatedAt && <p className="mt-2 text-xs text-blue-700">Courier GPS updated {formatDateTime(delivery.locationUpdatedAt)}</p>}
               </>
             ) : (
               <p className="text-sm text-amber-600">
@@ -225,6 +254,16 @@ const Tracking = () => {
               </p>
             )}
           </div>
+
+          {delivery?.proofOfDelivery?.confirmedAt && (
+            <div className="card p-5">
+              <h3 className="font-bold text-gray-900 mb-2">Proof of Delivery</h3>
+              <p className="text-sm text-gray-600">Received by: <span className="font-medium">{delivery.proofOfDelivery.recipientName}</span></p>
+              <p className="mt-1 text-xs text-gray-500">Confirmed {formatDateTime(delivery.proofOfDelivery.confirmedAt)}</p>
+              {delivery.proofOfDelivery.note && <p className="mt-2 text-sm text-gray-600">{delivery.proofOfDelivery.note}</p>}
+              {delivery.proofOfDelivery.photoUrl && <a className="mt-2 inline-block text-sm text-primary-700 underline" href={delivery.proofOfDelivery.photoUrl} target="_blank" rel="noreferrer">View delivery photo</a>}
+            </div>
+          )}
 
           {/* Route */}
           <div className="card p-5">

@@ -22,9 +22,17 @@ const marketPriceRoutes = require('./routes/marketPriceRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const adviceRoutes = require('./routes/adviceRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
+const offerRoutes = require('./routes/offerRoutes');
+const chatRoutes = require('./routes/chatRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
+const reportRoutes = require('./routes/reportRoutes');
+const { processDueSubscriptions } = require('./controllers/subscriptionController');
 
 // Connect to MongoDB
-connectDB();
+connectDB().then(() => {
+  setInterval(processDueSubscriptions, 60 * 1000);
+});
 
 const app = express();
 const server = http.createServer(app);
@@ -82,6 +90,11 @@ app.use('/api/market-prices', marketPriceRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/advice', adviceRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/offers', offerRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/reports', reportRoutes);
 
 // ---------- Error handling ----------
 app.use(notFound);

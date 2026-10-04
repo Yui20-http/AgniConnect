@@ -67,26 +67,26 @@ const userSchema = new mongoose.Schema(
     cropCategories: { type: [String], default: [] },
     yearsOfExperience: { type: Number, default: 0, min: 0 },
     upiId: { type: String, default: '', trim: true },
+    kycStatus: { type: String, enum: ['not_submitted', 'pending', 'verified', 'rejected'], default: 'not_submitted', index: true },
+    kycDocumentType: { type: String, default: '' },
+    kycLastFour: { type: String, default: '', maxlength: 4 },
+    kycSubmittedAt: { type: Date, default: null },
+    kycReviewedAt: { type: Date, default: null },
+    kycReviewNote: { type: String, default: '', maxlength: 500 },
+    isFeatured: { type: Boolean, default: false, index: true },
     // ---- Delivery partner specific ----
     vehicleType: { type: String, default: '', trim: true },
     vehicleNumber: { type: String, default: '', trim: true },
     isAvailable: { type: Boolean, default: true },
+    courierLocation: {
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+      updatedAt: { type: Date, default: null },
+    },
     // ---- Account state ----
     isActive: {
       type: Boolean,
       default: true,
-    },
-    emailVerified: {
-      type: Boolean,
-      default: false,
-    },
-    emailVerificationToken: {
-      type: String,
-      default: '',
-    },
-    emailVerificationExpires: {
-      type: Date,
-      default: null,
     },
     resetPasswordToken: {
       type: String,
@@ -96,7 +96,7 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    rating: { type: Number, default: 4.5, min: 0, max: 5 },
+    rating: { type: Number, default: 0, min: 0, max: 5 },
   },
   { timestamps: true }
 );

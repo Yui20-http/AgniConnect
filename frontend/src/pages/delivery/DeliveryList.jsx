@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Truck, MapPin, Phone, Package, Filter, Navigation } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Truck, MapPin, Phone, Package, Filter, Navigation, Radio } from 'lucide-react';
 import { deliveryService } from '../../services';
 import { useToast } from '../../context/ToastContext';
 import { useSocket } from '../../context/SocketContext';
@@ -7,6 +7,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import EmptyState from '../../components/EmptyState';
 import StatusBadge from '../../components/StatusBadge';
 import { formatCurrency, formatDate } from '../../utils/helpers';
+import Modal from '../../components/Modal';
 
 const FILTERS = ['All', 'Assigned', 'Picked Up', 'In Transit', 'Delivered'];
 
@@ -20,6 +21,12 @@ const DeliveryList = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('All');
   const [busyId, setBusyId] = useState(null);
+  const [gpsDeliveryId, setGpsDeliveryId] = useState('');
+  const [completeDelivery, setCompleteDelivery] = useState(null);
+  const [proof, setProof] = useState({ otp: '', recipientName: '', proofNote: '' });
+  const [proofPhoto, setProofPhoto] = useState(null);
+  const watchId = useRef(null);
+  const lastGpsSentAt = useRef(0);
 
   const load = async () => {
     try {
@@ -47,17 +54,67 @@ const DeliveryList = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
 
-  const updateStatus = async (delivery, status) => {
+  useEffect(() => {
+    if (!gpsDeliveryId) return undefined;
+    if (!navigator.geolocation) {
+      toast.warning('This device does not support GPS location sharing.');
+      setGpsDeliveryId('');
+      return undefined;
+    }
+    watchId.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const now = Date.now();
+        if (now - lastGpsSentAt.current < 8000) return;
+        lastGpsSentAt.current = now;
+        deliveryService.updateLocation(gpsDeliveryId, {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          heading: position.coords.heading,
+          speedKph: position.coords.speed == null ? null : position.coords.speed * 3.6,
+        }).catch((error) => toast.error(error?.response?.data?.message || 'Could not share GPS location'));
+      },
+      () => {
+        toast.error('GPS access was denied or unavailable.');
+        setGpsDeliveryId('');
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
+    return () => {
+      if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current);
+      watchId.current = null;
+    };
+  }, [gpsDeliveryId, toast]);
+
+  const updateStatus = async (delivery, status, payload = {}) => {
     try {
       setBusyId(delivery._id);
-      await deliveryService.updateStatus(delivery._id, status);
+      const requestBody = payload instanceof FormData ? payload : { status, ...payload };
+      if (payload instanceof FormData) requestBody.set('status', status);
+      await deliveryService.updateStatus(delivery._id, requestBody);
       toast.success(`Marked as ${status}`);
+      if (status === 'Delivered') {
+        setGpsDeliveryId('');
+        setCompleteDelivery(null);
+        setProof({ otp: '', recipientName: '', proofNote: '' });
+        setProofPhoto(null);
+      }
       load();
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Could not update delivery');
     } finally {
       setBusyId(null);
     }
+  };
+
+  const confirmDelivery = async (event) => {
+    event.preventDefault();
+    const form = new FormData();
+    form.append('status', 'Delivered');
+    form.append('otp', proof.otp);
+    form.append('recipientName', proof.recipientName);
+    form.append('proofNote', proof.proofNote);
+    if (proofPhoto) form.append('proofPhoto', proofPhoto);
+    await updateStatus(completeDelivery, 'Delivered', form);
   };
 
   const nextAction = (d) => {
@@ -79,6 +136,16 @@ const DeliveryList = () => {
 
   return (
     <div className="space-y-5">
+      <Modal isOpen={!!completeDelivery} onClose={() => setCompleteDelivery(null)} title="Confirm proof of delivery" size="sm">
+        <form onSubmit={confirmDelivery} className="space-y-4">
+          <p className="text-sm text-gray-600">Enter the OTP provided by the buyer. The order cannot be completed without this verification.</p>
+          <label className="block"><span className="label">6-digit buyer OTP *</span><input className="input" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required value={proof.otp} onChange={(event) => setProof((current) => ({ ...current, otp: event.target.value }))} /></label>
+          <label className="block"><span className="label">Received by *</span><input className="input" required maxLength={100} value={proof.recipientName} onChange={(event) => setProof((current) => ({ ...current, recipientName: event.target.value }))} placeholder="Recipient name" /></label>
+          <label className="block"><span className="label">Delivery note</span><textarea className="input" maxLength={500} rows={2} value={proof.proofNote} onChange={(event) => setProof((current) => ({ ...current, proofNote: event.target.value }))} placeholder="Optional handoff details" /></label>
+          <label className="block"><span className="label">Photo proof (optional)</span><input className="input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setProofPhoto(event.target.files?.[0] || null)} /></label>
+          <div className="flex justify-end gap-2"><button type="button" onClick={() => setCompleteDelivery(null)} className="btn-secondary">Cancel</button><button className="btn-primary" disabled={busyId === completeDelivery?._id}>{busyId === completeDelivery?._id ? 'Verifying…' : 'Verify & deliver'}</button></div>
+        </form>
+      </Modal>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-gray-900">My Deliveries</h2>
@@ -168,7 +235,7 @@ const DeliveryList = () => {
                   </div>
                   {action ? (
                     <button
-                      onClick={() => updateStatus(d, action.status)}
+                      onClick={() => action.status === 'Delivered' ? setCompleteDelivery(d) : updateStatus(d, action.status)}
                       disabled={busyId === d._id}
                       className="btn-primary !py-2"
                     >
@@ -178,6 +245,11 @@ const DeliveryList = () => {
                     <span className="badge bg-green-100 text-green-700">Completed</span>
                   )}
                 </div>
+                {['Picked Up', 'In Transit'].includes(d.status) && (
+                  <button onClick={() => setGpsDeliveryId((current) => current === d._id ? '' : d._id)} className={`mt-3 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${gpsDeliveryId === d._id ? 'bg-red-50 text-red-700' : 'btn-secondary'}`}>
+                    <Radio className={`h-4 w-4 ${gpsDeliveryId === d._id ? 'animate-pulse' : ''}`} />{gpsDeliveryId === d._id ? 'Stop live GPS' : 'Share live GPS'}
+                  </button>
+                )}
               </div>
             );
           })}

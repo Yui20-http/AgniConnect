@@ -43,6 +43,29 @@ const FilterPanel = ({ filters, setFilters, onReset }) => {
         </div>
 
         <div>
+          <label className="label">Nearby distance</label>
+          <select value={filters.radiusKm} onChange={(e) => update('radiusKm', e.target.value)} className="input">
+            <option value="">Any distance</option>
+            <option value="10">Within 10 km</option>
+            <option value="25">Within 25 km</option>
+            <option value="50">Within 50 km</option>
+            <option value="100">Within 100 km</option>
+          </select>
+          {!filters.nearLat && <p className="mt-1 text-xs text-gray-500">Use your location to apply distance.</p>}
+        </div>
+
+        <div>
+          <label className="label">Freshness</label>
+          <select value={filters.freshnessDays} onChange={(e) => update('freshnessDays', e.target.value)} className="input">
+            <option value="">Any harvest date</option>
+            <option value="3">Harvested in last 3 days</option>
+            <option value="7">Harvested in last 7 days</option>
+            <option value="14">Harvested in last 14 days</option>
+            <option value="30">Harvested in last 30 days</option>
+          </select>
+        </div>
+
+        <div>
           <label className="label">Price Range (₹)</label>
           <div className="flex items-center gap-2">
             <input
@@ -84,6 +107,11 @@ const FilterPanel = ({ filters, setFilters, onReset }) => {
           <label htmlFor="availableOnly" className="text-sm text-gray-700">
             Show available only
           </label>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="organicOnly" checked={filters.organicOnly} onChange={(e) => update('organicOnly', e.target.checked)} className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+          <label htmlFor="organicOnly" className="text-sm text-gray-700">Organic farms only</label>
         </div>
       </div>
     </div>

@@ -11,7 +11,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { orderService, productService, paymentService } from '../../services';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import { useToast } from '../../context/ToastContext';
 import DashboardCard from '../../components/DashboardCard';
 import OrderCard from '../../components/OrderCard';
@@ -62,19 +62,27 @@ const FarmerDashboard = () => {
   return (
     <div className="space-y-6">
       {/* Welcome */}
-      <div className="card p-6 bg-gradient-to-r from-primary-600 to-primary-500 text-white border-0">
-        <h2 className="text-2xl font-extrabold">Welcome back, {user?.name?.split(' ')[0]} 👋</h2>
-        <p className="text-primary-50 mt-1">
+      <div className="relative overflow-hidden rounded-2xl border border-[#dce7d5] bg-[#eaf1e4] p-6 sm:p-8">
+        <div className="pointer-events-none absolute -right-8 -top-20 h-64 w-64 rounded-full border border-[#d3e0cc]" />
+        <div className="pointer-events-none absolute -right-1 -top-12 h-48 w-48 rounded-full border border-[#d3e0cc]" />
+        <div className="relative z-10">
+        <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#5d795e]">Farmer workspace</p>
+        <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#173b28] sm:text-3xl">Welcome back, {user?.name?.split(' ')[0]}.</h2>
+        <p className="mt-1 text-sm text-[#617264]">
           {user?.farmName ? `${user.farmName} · ` : ''}
           {user?.farmLocation || 'Manage your farm listings and orders here.'}
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
-          <Link to="/farmer/products" className="btn bg-white text-primary-700 hover:bg-primary-50">
+          <Link to="/farmer/products" className="btn rounded-xl bg-[#173b28] text-white shadow-sm hover:bg-[#204b32]">
             <Plus className="w-4 h-4" /> Add Product
           </Link>
-          <Link to="/farmer/orders" className="btn bg-white/15 text-white hover:bg-white/25">
+          <Link to="/farmer/orders" className="btn border border-[#cadbc3] bg-white/65 text-[#31533a] hover:bg-white">
             <ShoppingBag className="w-4 h-4" /> View Orders
           </Link>
+          <Link to="/farmer/earnings" className="btn border border-[#cadbc3] bg-white/65 text-[#31533a] hover:bg-white">
+            <IndianRupee className="w-4 h-4" /> Earnings
+          </Link>
+        </div>
         </div>
       </div>
 
@@ -103,15 +111,15 @@ const FarmerDashboard = () => {
         <div className="mt-4 grid sm:grid-cols-3 gap-3 text-sm">
           <div className="rounded-xl bg-gray-50 p-3">
             <p className="text-gray-500">Gross sales</p>
-            <p className="text-lg font-bold text-gray-900">{formatCurrency(payoutSummary?.totals?.gross ?? 0)}</p>
+            <p className="text-lg font-bold text-gray-900">{formatCurrency(payoutSummary?.totals?.grossProduceSales ?? 0)}</p>
           </div>
           <div className="rounded-xl bg-gray-50 p-3">
             <p className="text-gray-500">Platform commission</p>
-            <p className="text-lg font-bold text-gray-900">{formatCurrency(payoutSummary?.totals?.commission ?? 0)}</p>
+            <p className="text-lg font-bold text-gray-900">{formatCurrency(payoutSummary?.totals?.platformCommission ?? 0)}</p>
           </div>
           <div className="rounded-xl bg-primary-50 p-3">
             <p className="text-gray-500">Farmer payout</p>
-            <p className="text-lg font-bold text-primary-700">{formatCurrency(payoutSummary?.totals?.payout ?? 0)}</p>
+            <p className="text-lg font-bold text-primary-700">{formatCurrency(payoutSummary?.totals?.earned ?? 0)}</p>
           </div>
         </div>
       </div>

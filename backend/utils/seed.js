@@ -25,7 +25,8 @@ const Notification = require('../models/Notification');
 const MarketPrice = require('../models/MarketPrice');
 const Cart = require('../models/Cart');
 
-const { ORDER_STATUS, DELIVERY_STATUS, DELIVERY_FEE } = require('../config/constants');
+const { ORDER_STATUS, DELIVERY_STATUS } = require('../config/constants');
+const { estimateDelivery } = require('./deliveryPricing');
 
 const includeDemoAccounts = process.env.SEED_DEMO_ACCOUNTS === 'true';
 const includeDemoProducts = process.env.SEED_DEMO_PRODUCTS === 'true';
@@ -194,14 +195,21 @@ const seed = async () => {
     const farmer = await User.findById(product.farmer);
     const quantity = rand(product.minOrderQuantity, Math.min(20, product.quantity || 5));
     const subtotal = product.pricePerUnit * quantity;
-    const grandTotal = subtotal + DELIVERY_FEE;
+    const deliveryEstimate = estimateDelivery({
+      pickupCoordinates: null,
+      deliveryCoordinates: null,
+      pickupLocation: farmer.farmLocation,
+      deliveryLocation: buyer.location || buyer.address,
+    });
+    const grandTotal = subtotal + deliveryEstimate.deliveryFee;
     const status = statuses[i % statuses.length];
 
     const order = await Order.create({
       buyer: buyer._id,
       farmer: farmer._id,
       totalAmount: subtotal,
-      deliveryFee: DELIVERY_FEE,
+      deliveryFee: deliveryEstimate.deliveryFee,
+      deliveryDistanceKm: deliveryEstimate.distanceKm,
       grandTotal,
       deliveryAddress: buyer.address,
       deliveryLocation: buyer.location,

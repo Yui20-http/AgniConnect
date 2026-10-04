@@ -12,13 +12,20 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || undefined;
 let socket = null;
 
 export const connectSocket = (userId) => {
-  if (socket && socket.connected) {
-    socket.emit('join', userId);
+  const token = localStorage.getItem('agriconnect_token');
+  if (!token) return null;
+
+  if (socket) {
+    const tokenChanged = socket.auth?.token !== token;
+    socket.auth = { token };
+    if (tokenChanged && socket.connected) socket.disconnect().connect();
+    if (socket.connected && userId) socket.emit('join', userId);
     return socket;
   }
 
   socket = io(SOCKET_URL, {
     transports: ['websocket', 'polling'],
+    auth: { token },
     autoConnect: true,
   });
 

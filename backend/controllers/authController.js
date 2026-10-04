@@ -1,24 +1,8 @@
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
 const asyncHandler = require('../utils/asyncHandler');
-const { sendMail, createOtp, createToken } = require('../utils/email');
+const { sendMail, createOtp } = require('../utils/email');
 const { ROLES } = require('../config/constants');
-
-const sendVerificationEmail = async (user) => {
-  const token = createToken();
-  user.emailVerificationToken = token;
-  user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  await user.save();
-
-  const verificationUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/verify-email?token=${token}&email=${encodeURIComponent(user.email)}`;
-
-  await sendMail({
-    to: user.email,
-    subject: 'Verify your AgriConnect account',
-    text: `Use this link to verify your email: ${verificationUrl}`,
-    html: `<p>Hi ${user.name},</p><p>Click <a href="${verificationUrl}">here</a> to verify your AgriConnect account.</p>`,
-  });
-};
 
 /**
  * @desc    Register a new user (farmer / buyer / delivery)
@@ -86,18 +70,11 @@ const register = asyncHandler(async (req, res) => {
     location: location || farmLocation || '',
     vehicleType: vehicleType || '',
     vehicleNumber: vehicleNumber || '',
-    emailVerified: false,
   });
-
-  try {
-    await sendVerificationEmail(user);
-  } catch (error) {
-    console.warn('Verification email could not be sent:', error.message);
-  }
 
   res.status(201).json({
     success: true,
-    message: 'Registration successful. Please verify your email.',
+    message: 'Registration successful. You can sign in using the email and password saved to your account.',
     data: {
       _id: user._id,
       name: user.name,
@@ -111,9 +88,13 @@ const register = asyncHandler(async (req, res) => {
       cropCategories: user.cropCategories,
       yearsOfExperience: user.yearsOfExperience,
       upiId: user.upiId,
+      kycStatus: user.kycStatus,
+      kycDocumentType: user.kycDocumentType,
+      kycLastFour: user.kycLastFour,
+      kycReviewNote: user.kycReviewNote,
+      isFeatured: user.isFeatured,
       address: user.address,
       location: user.location,
-      emailVerified: user.emailVerified,
       token: generateToken(user._id),
     },
   });
@@ -158,59 +139,20 @@ const login = asyncHandler(async (req, res) => {
       farmingType: user.farmingType,
       cropCategories: user.cropCategories,
       yearsOfExperience: user.yearsOfExperience,
+      kycStatus: user.kycStatus,
+      kycDocumentType: user.kycDocumentType,
+      kycLastFour: user.kycLastFour,
+      kycReviewNote: user.kycReviewNote,
+      isFeatured: user.isFeatured,
       upiId: user.upiId,
       address: user.address,
       location: user.location,
       profileImage: user.profileImage,
       vehicleType: user.vehicleType,
       vehicleNumber: user.vehicleNumber,
-      emailVerified: user.emailVerified,
       token: generateToken(user._id),
     },
   });
-});
-
-const requestEmailVerification = asyncHandler(async (req, res) => {
-  const { email } = req.body;
-  if (!email) {
-    res.status(400);
-    throw new Error('Email is required');
-  }
-
-  const user = await User.findOne({ email: email.toLowerCase() });
-  if (!user) {
-    res.status(404);
-    throw new Error('User not found');
-  }
-
-  await sendVerificationEmail(user);
-  res.json({ success: true, message: 'Verification email sent successfully' });
-});
-
-const verifyEmail = asyncHandler(async (req, res) => {
-  const { token, email } = req.query;
-  if (!token || !email) {
-    res.status(400);
-    throw new Error('Verification token and email are required');
-  }
-
-  const user = await User.findOne({
-    email: email.toLowerCase(),
-    emailVerificationToken: token,
-    emailVerificationExpires: { $gt: new Date() },
-  });
-
-  if (!user) {
-    res.status(400);
-    throw new Error('Invalid or expired verification token');
-  }
-
-  user.emailVerified = true;
-  user.emailVerificationToken = '';
-  user.emailVerificationExpires = null;
-  await user.save();
-
-  res.json({ success: true, message: 'Email verified successfully' });
 });
 
 const requestPasswordReset = asyncHandler(async (req, res) => {
@@ -231,12 +173,17 @@ const requestPasswordReset = asyncHandler(async (req, res) => {
   user.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000);
   await user.save();
 
-  await sendMail({
+  const mailResult = await sendMail({
     to: user.email,
     subject: 'AgriConnect password reset OTP',
     text: `Your OTP for password reset is ${otp}. It expires in 15 minutes.`,
     html: `<p>Your OTP for password reset is <strong>${otp}</strong>. It expires in 15 minutes.</p>`,
   });
+
+  if (!mailResult?.messageId && !mailResult?.accepted?.length) {
+    res.status(503);
+    throw new Error(mailResult?.message || 'Password reset email could not be sent. Check backend SMTP configuration.');
+  }
 
   res.json({ success: true, message: 'Password reset OTP sent to your email' });
 });
@@ -284,8 +231,6 @@ module.exports = {
   register,
   login,
   getMe,
-  requestEmailVerification,
-  verifyEmail,
   requestPasswordReset,
   resetPassword,
 };
