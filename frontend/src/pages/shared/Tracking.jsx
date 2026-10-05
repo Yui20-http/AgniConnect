@@ -10,6 +10,7 @@ import {
   Clock,
   CheckCircle2,
   RotateCw,
+  MessageCircle,
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -259,6 +260,11 @@ const Tracking = () => {
                   <div className="mt-3">
                     <StatusBadge status={delivery.status} />
                   </div>
+                )}
+                {delivery?._id && (
+                  <Link to={`/buyer/messages?deliveryOrderId=${order._id}`} className="btn-secondary mt-3 !py-2 text-xs">
+                    <MessageCircle className="h-4 w-4" /> Chat with delivery partner
+                  </Link>
                 )}
                 {['Assigned', 'Picked Up', 'In Transit'].includes(delivery?.status) && (
                   <div className="mt-4 rounded-xl border border-primary-100 bg-primary-50/70 p-3">

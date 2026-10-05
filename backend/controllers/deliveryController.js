@@ -60,15 +60,16 @@ const getDeliveryByOrder = asyncHandler(async (req, res) => {
   if (!delivery.distanceKm && delivery.order?.deliveryDistanceKm) {
     delivery.distanceKm = delivery.order.deliveryDistanceKm;
   }
+  const referenceId = (value) => String(value?._id || value || '');
   const allowed = req.user.role === 'admin' ||
-    String(delivery.buyer) === String(req.user._id) ||
-    String(delivery.farmer) === String(req.user._id) ||
-    String(delivery.deliveryPartner || '') === String(req.user._id);
+    referenceId(delivery.buyer) === String(req.user._id) ||
+    referenceId(delivery.farmer) === String(req.user._id) ||
+    referenceId(delivery.deliveryPartner) === String(req.user._id);
   if (!allowed) {
     res.status(403);
     throw new Error('Not authorized to view this delivery');
   }
-  if (String(delivery.deliveryPartner || '') === String(req.user._id) && req.user.role === 'delivery') {
+  if (referenceId(delivery.deliveryPartner) === String(req.user._id) && req.user.role === 'delivery') {
     delivery.deliveryOtpHash = undefined;
   }
   res.json({ success: true, data: delivery });
@@ -268,8 +269,12 @@ const regenerateDeliveryOtp = asyncHandler(async (req, res) => {
   const result = await issueDeliveryOtp(delivery, order);
   res.json({
     success: true,
-    message: 'A new delivery OTP was added to your buyer notifications',
-    data: { issuedAt: result.issuedAt, expiresAt: result.expiresAt },
+    message: result.sms.sent
+      ? 'A new delivery OTP was submitted by SMS to your registered phone and added to notifications'
+      : result.sms.configured
+        ? 'A new delivery OTP was added to notifications, but the SMS could not be submitted'
+        : 'A new delivery OTP was added to notifications; SMS provider setup is required',
+    data: { issuedAt: result.issuedAt, expiresAt: result.expiresAt, smsSent: result.sms.sent },
   });
 });
 

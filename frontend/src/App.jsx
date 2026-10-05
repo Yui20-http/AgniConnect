@@ -141,6 +141,7 @@ function App() {
               >
                 <Route index element={<DeliveryDashboard />} />
                 <Route path="deliveries" element={<DeliveryList />} />
+                <Route path="messages" element={<Messages role="delivery" />} />
                 <Route path="profile" element={<DeliveryProfile />} />
               </Route>
 

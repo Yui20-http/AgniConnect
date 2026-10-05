@@ -15,6 +15,7 @@ const Messages = ({ role }) => {
   const { socket } = useSocket();
   const [searchParams] = useSearchParams();
   const requestedFarmerId = searchParams.get('farmerId');
+  const requestedDeliveryOrderId = searchParams.get('deliveryOrderId');
   const [conversations, setConversations] = useState([]);
   const [activeId, setActiveId] = useState('');
   const [messages, setMessages] = useState([]);
@@ -52,12 +53,24 @@ const Messages = ({ role }) => {
         } catch (error) {
           toast.error(error?.response?.data?.message || 'Could not start conversation');
         }
+      } else if ((role === 'buyer' || role === 'delivery') && requestedDeliveryOrderId) {
+        try {
+          const response = await chatService.startDeliveryConversation(requestedDeliveryOrderId);
+          const conversation = response.data.data;
+          if (alive) {
+            rows = [conversation, ...rows.filter((row) => row._id !== conversation._id)];
+            setConversations(rows);
+            setActiveId(conversation._id);
+          }
+        } catch (error) {
+          toast.error(error?.response?.data?.message || 'Could not start delivery conversation');
+        }
       } else if (alive && rows.length) setActiveId((current) => current || rows[0]._id);
       if (alive) setLoading(false);
     };
     init();
     return () => { alive = false; };
-  }, [role, requestedFarmerId]);
+  }, [role, requestedFarmerId, requestedDeliveryOrderId]);
 
   useEffect(() => {
     if (!activeId) { setMessages([]); return; }
@@ -96,11 +109,17 @@ const Messages = ({ role }) => {
   if (loading) return <LoadingSpinner fullScreen label="Loading messages..." />;
 
   const active = conversations.find((conversation) => conversation._id === activeId);
-  const other = (conversation) => role === 'buyer' ? conversation.farmer : conversation.buyer;
+  const other = (conversation) => {
+    if (role !== 'buyer') return conversation.buyer;
+    return conversation.kind === 'delivery' ? (conversation.deliveryPartner || conversation.farmer) : conversation.farmer;
+  };
+  const otherRole = (conversation) => role === 'buyer'
+    ? (conversation.kind === 'delivery' ? 'Delivery Partner' : 'Farmer')
+    : 'Buyer';
 
   return (
     <div className="space-y-4">
-      <header><h2 className="text-2xl font-bold text-gray-900">Messages</h2><p className="mt-1 text-sm text-gray-500">Direct, private conversations between buyers and farmers.</p></header>
+      <header><h2 className="text-2xl font-bold text-gray-900">Messages</h2><p className="mt-1 text-sm text-gray-500">Private conversations with your farmers, buyers, and assigned delivery partners.</p></header>
       <div className="card grid min-h-[560px] overflow-hidden md:grid-cols-[280px_1fr]">
         <aside className="border-b border-gray-100 md:border-b-0 md:border-r">
           <div className="p-3 font-semibold text-gray-800">Conversations</div>
@@ -111,11 +130,11 @@ const Messages = ({ role }) => {
               {conversation.lastMessageAt && <p className="mt-1 text-[10px] text-gray-400">{formatDateTime(conversation.lastMessageAt)}</p>}
             </button>
           ))}
-          {!conversations.length && <div className="p-4"><EmptyState icon={MessageCircle} title="No conversations" message="Open a product and select Chat with farmer to start." /></div>}
+          {!conversations.length && <div className="p-4"><EmptyState icon={MessageCircle} title="No conversations" message={role === 'delivery' ? 'Open an assigned delivery and select Chat with buyer to start.' : 'Open an order or product and select a chat option to start.'} /></div>}
         </aside>
         <section className="flex min-h-[540px] flex-col">
           {active ? <>
-            <div className="border-b border-gray-100 p-4"><p className="font-semibold text-gray-900">{other(active)?.farmName || other(active)?.name || 'Conversation'}</p><p className="text-xs text-gray-500">{role === 'buyer' ? 'Farmer' : 'Buyer'}</p></div>
+            <div className="border-b border-gray-100 p-4"><p className="font-semibold text-gray-900">{other(active)?.farmName || other(active)?.name || 'Conversation'}</p><p className="text-xs text-gray-500">{otherRole(active)}</p></div>
             <div className="flex-1 space-y-3 overflow-y-auto bg-gray-50 p-4">
               {messages.map((message) => {
                 const mine = String(message.sender?._id || message.sender) === String(user?._id);

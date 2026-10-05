@@ -8,6 +8,7 @@ const Notification = require('../models/Notification');
 const { DELIVERY_STATUS, ORDER_STATUS } = require('../config/constants');
 const { geocodeLocation } = require('./geo');
 const { haversineKm } = require('./deliveryPricing');
+const { sendDeliveryOtpSms, isMsg91Configured } = require('./sms');
 
 const generateDeliveryOtp = () => String(crypto.randomInt(100000, 1000000));
 const hashDeliveryOtp = (otp) => crypto.createHash('sha256').update(String(otp)).digest('hex');
@@ -46,7 +47,14 @@ const issueDeliveryOtp = async (delivery, order) => {
     link: `/buyer/orders/${order._id}/track`,
     meta: { kind: 'delivery_otp', orderId: order._id, deliveryId: delivery._id, expiresAt },
   });
-  return { issuedAt, expiresAt, notification };
+  let sms = { configured: isMsg91Configured(), sent: false };
+  try {
+    const buyer = await User.findById(order.buyer).select('phone').lean();
+    sms = await sendDeliveryOtpSms({ phone: buyer?.phone, otp, orderNumber: order.orderNumber });
+  } catch (error) {
+    console.error(`Could not prepare delivery OTP SMS: ${error.message}`);
+  }
+  return { issuedAt, expiresAt, notification, sms };
 };
 
 const COURIER_LOCATION_MAX_AGE_MS = 30 * 60 * 1000;

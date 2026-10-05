@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Truck, MapPin, Phone, Package, Filter, Navigation, Radio } from 'lucide-react';
+import { Truck, MapPin, Phone, Package, Filter, Navigation, Radio, MessageCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { deliveryService } from '../../services';
 import { useToast } from '../../context/ToastContext';
 import { useSocket } from '../../context/SocketContext';
@@ -249,6 +250,11 @@ const DeliveryList = () => {
                   <button onClick={() => setGpsDeliveryId((current) => current === d._id ? '' : d._id)} className={`mt-3 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${gpsDeliveryId === d._id ? 'bg-red-50 text-red-700' : 'btn-secondary'}`}>
                     <Radio className={`h-4 w-4 ${gpsDeliveryId === d._id ? 'animate-pulse' : ''}`} />{gpsDeliveryId === d._id ? 'Stop live GPS' : 'Share live GPS'}
                   </button>
+                )}
+                {d.order?._id && (
+                  <Link to={`/delivery/messages?deliveryOrderId=${d.order._id}`} className="btn-secondary mt-3 !py-2 text-xs">
+                    <MessageCircle className="h-4 w-4" /> Chat with buyer
+                  </Link>
                 )}
               </div>
             );

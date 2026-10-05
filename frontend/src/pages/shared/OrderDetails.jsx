@@ -5,6 +5,7 @@ import {
   Package,
   MapPin,
   Phone,
+  MessageCircle,
   User,
   Truck,
   Calendar,
@@ -336,6 +337,11 @@ const OrderDetails = ({ role = 'buyer' }) => {
             <p className="text-sm text-gray-500 flex items-start gap-1 mt-1">
               <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {order.pickupLocation || order.farmer?.farmLocation}
             </p>
+            {role === 'buyer' && order.farmer?._id && (
+              <button type="button" onClick={() => navigate(`/buyer/messages?farmerId=${order.farmer._id}`)} className="btn-secondary mt-3 !py-2 text-xs">
+                <MessageCircle className="h-4 w-4" /> Message farmer
+              </button>
+            )}
           </div>
 
           {/* Delivery partner */}
@@ -355,6 +361,11 @@ const OrderDetails = ({ role = 'buyer' }) => {
                   <p className="text-sm text-gray-500 mt-1">
                     {order.deliveryPartner.vehicleType} · {order.deliveryPartner.vehicleNumber}
                   </p>
+                )}
+                {role === 'buyer' && (
+                  <button type="button" onClick={() => navigate(`/buyer/messages?deliveryOrderId=${order._id}`)} className="btn-secondary mt-3 !py-2 text-xs">
+                    <MessageCircle className="h-4 w-4" /> Message delivery partner
+                  </button>
                 )}
               </>
             ) : (

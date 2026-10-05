@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   User,
   Phone,
+  MessageCircle,
   CheckCircle2,
   Heart,
 } from 'lucide-react';
@@ -281,11 +282,27 @@ const ProductDetails = () => {
                   <span className="font-semibold">Payout UPI required:</span> {farmer.upiId || 'Farmer has not added payout UPI yet'}
                 </div>
               </div>
-              {farmer.phone && (
-                <a href={`tel:${farmer.phone}`} className="btn-secondary !py-2 !px-3 text-xs">
-                  <Phone className="w-4 h-4" /> Contact
-                </a>
-              )}
+              <div className="flex shrink-0 flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (user?.role !== 'buyer') {
+                      toast.warning('Log in as a buyer to message this farmer');
+                      navigate('/login');
+                      return;
+                    }
+                    navigate(`/buyer/messages?farmerId=${farmer._id}`);
+                  }}
+                  className="btn-secondary !py-2 !px-3 text-xs"
+                >
+                  <MessageCircle className="w-4 h-4" /> Contact farmer
+                </button>
+                {farmer.phone && (
+                  <a href={`tel:${farmer.phone}`} className="inline-flex items-center justify-center gap-2 text-xs text-gray-500 hover:text-primary-700">
+                    <Phone className="w-3.5 h-3.5" /> Call
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -46,6 +46,7 @@ export const buyerLinks = [
 export const deliveryLinks = [
   { to: '/delivery', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/delivery/deliveries', label: 'My Deliveries', icon: Truck },
+  { to: '/delivery/messages', label: 'Messages', icon: MessageCircle },
   { to: '/delivery/profile', label: 'Profile', icon: User },
 ];
 

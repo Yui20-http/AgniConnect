@@ -89,6 +89,7 @@ export const offerService = {
 export const chatService = {
   getConversations: () => api.get('/chat/conversations'),
   startConversation: (farmerId) => api.post(`/chat/conversations/farmer/${farmerId}`),
+  startDeliveryConversation: (orderId) => api.post(`/chat/conversations/order/${orderId}/delivery`),
   getMessages: (conversationId) => api.get(`/chat/conversations/${conversationId}/messages`),
   sendMessage: (conversationId, body) => api.post(`/chat/conversations/${conversationId}/messages`, { body }),
 };
