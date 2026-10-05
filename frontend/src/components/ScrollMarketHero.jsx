@@ -63,7 +63,7 @@ const ScrollMarketHero = ({ search, setSearch, onSearch }) => {
             <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-lime-200/20 bg-lime-200/[.06] px-3.5 py-2 text-[11px] font-bold uppercase tracking-[.18em] text-lime-200">
               <Sprout className="h-4 w-4" /> A closer connection to your food
             </div>
-            <h1 className="max-w-[12ch] text-[clamp(2.8rem,6.3vw,6rem)] font-semibold leading-[.96] tracking-[-.065em] text-[#17251b]">
+            <h1 className="max-w-[12ch] text-[clamp(2.8rem,6.3vw,6rem)] font-semibold leading-[.96] tracking-[-.065em] text-white">
               Good food starts <span className="font-serif italic font-normal text-lime-300">closer</span> to home.
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-emerald-100/65 sm:text-lg">Shop seasonal produce directly from the people who grow it. Clear prices, real farms, and delivery you can follow.</p>
