@@ -6,6 +6,10 @@ AgriConnect is a full-stack MERN (MongoDB, Express, React, Node.js) web applicat
 
 This project was built as a **TYBScIT CEP (College Final-Year) project** and is designed to be easy to understand, run, and demonstrate.
 
+## Interface Preview
+
+![AgriConnect futuristic marketplace homepage](docs/screenshots/agriconnect-homepage.png)
+
 ---
 
 ## 📑 Table of Contents
