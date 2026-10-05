@@ -45,6 +45,8 @@ const deliverySchema = new mongoose.Schema(
     },
     locationUpdatedAt: { type: Date, default: null },
     deliveryOtpHash: { type: String, default: '', select: false },
+    deliveryOtpIssuedAt: { type: Date, default: null },
+    deliveryOtpExpiresAt: { type: Date, default: null },
     proofOfDelivery: {
       recipientName: { type: String, default: '' },
       note: { type: String, default: '' },

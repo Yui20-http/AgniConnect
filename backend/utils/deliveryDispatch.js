@@ -4,12 +4,50 @@ const Order = require('../models/Order');
 const Delivery = require('../models/Delivery');
 const { createNotification } = require('./notify');
 const { emitToUser } = require('./socket');
+const Notification = require('../models/Notification');
 const { DELIVERY_STATUS, ORDER_STATUS } = require('../config/constants');
 const { geocodeLocation } = require('./geo');
 const { haversineKm } = require('./deliveryPricing');
 
 const generateDeliveryOtp = () => String(crypto.randomInt(100000, 1000000));
 const hashDeliveryOtp = (otp) => crypto.createHash('sha256').update(String(otp)).digest('hex');
+const DELIVERY_OTP_TTL_MS = 2 * 60 * 60 * 1000;
+const DELIVERY_OTP_REISSUE_COOLDOWN_MS = 30 * 1000;
+
+const issueDeliveryOtp = async (delivery, order) => {
+  const otp = generateDeliveryOtp();
+  const issuedAt = new Date();
+  const expiresAt = new Date(issuedAt.getTime() + DELIVERY_OTP_TTL_MS);
+  delivery.deliveryOtpHash = hashDeliveryOtp(otp);
+  delivery.deliveryOtpIssuedAt = issuedAt;
+  delivery.deliveryOtpExpiresAt = expiresAt;
+  await delivery.save();
+
+  await Notification.updateMany(
+    {
+      user: order.buyer,
+      type: 'delivery',
+      'meta.orderId': order._id,
+      $or: [
+        { 'meta.kind': 'delivery_otp' },
+        // Older assignment notifications did not include meta.kind.
+        { title: { $regex: '^Courier assigned' } },
+      ],
+    },
+    { $set: { isRead: true, message: 'This code was replaced. Use the newest delivery OTP notification.' } }
+  );
+  emitToUser(order.buyer, 'notifications:refresh', { orderId: order._id });
+
+  const notification = await createNotification({
+    user: order.buyer,
+    title: 'Your delivery OTP',
+    message: `Your new delivery code is ${otp}. Give it to the courier when your order arrives. It expires in 2 hours.`,
+    type: 'delivery',
+    link: `/buyer/orders/${order._id}/track`,
+    meta: { kind: 'delivery_otp', orderId: order._id, deliveryId: delivery._id, expiresAt },
+  });
+  return { issuedAt, expiresAt, notification };
+};
 
 const COURIER_LOCATION_MAX_AGE_MS = 30 * 60 * 1000;
 
@@ -30,12 +68,10 @@ const claimAndAssign = async ({ order, delivery, partner }) => {
   );
   if (!claimedPartner) return false;
 
-  const otp = generateDeliveryOtp();
   delivery.deliveryPartner = claimedPartner._id;
   delivery.status = DELIVERY_STATUS.ASSIGNED;
-  delivery.deliveryOtpHash = hashDeliveryOtp(otp);
   delivery.statusHistory.push({ status: DELIVERY_STATUS.ASSIGNED, note: `Nearest available courier assigned: ${claimedPartner.name}` });
-  await delivery.save();
+  await issueDeliveryOtp(delivery, order);
 
   order.deliveryPartner = claimedPartner._id;
   if ([ORDER_STATUS.PENDING, ORDER_STATUS.ACCEPTED, ORDER_STATUS.PROCESSING].includes(order.status)) {
@@ -44,14 +80,6 @@ const claimAndAssign = async ({ order, delivery, partner }) => {
   }
   await order.save();
 
-  await createNotification({
-    user: order.buyer,
-    title: 'Courier assigned — delivery OTP',
-    message: `Courier ${claimedPartner.name} is assigned to ${order.orderNumber}. Give this OTP to the courier at delivery: ${otp}`,
-    type: 'delivery',
-    link: `/buyer/orders/${order._id}/track`,
-    meta: { orderId: order._id },
-  });
   await createNotification({
     user: claimedPartner._id,
     title: 'New delivery assigned',
@@ -99,4 +127,11 @@ const assignSpecificCourier = async (order, delivery, partner) => {
   return delivery;
 };
 
-module.exports = { assignNearestCourier, assignSpecificCourier, hashDeliveryOtp };
+module.exports = {
+  assignNearestCourier,
+  assignSpecificCourier,
+  hashDeliveryOtp,
+  issueDeliveryOtp,
+  DELIVERY_OTP_TTL_MS,
+  DELIVERY_OTP_REISSUE_COOLDOWN_MS,
+};

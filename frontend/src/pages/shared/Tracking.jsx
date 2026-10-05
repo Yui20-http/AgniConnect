@@ -9,6 +9,7 @@ import {
   Navigation,
   Clock,
   CheckCircle2,
+  RotateCw,
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -64,6 +65,7 @@ const Tracking = () => {
   const [order, setOrder] = useState(null);
   const [delivery, setDelivery] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [regeneratingOtp, setRegeneratingOtp] = useState(false);
 
   const load = async () => {
     try {
@@ -82,6 +84,19 @@ const Tracking = () => {
       navigate('/buyer/orders');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRegenerateOtp = async () => {
+    if (!delivery?._id) return;
+    try {
+      setRegeneratingOtp(true);
+      const { data } = await deliveryService.regenerateOtp(delivery._id);
+      toast.success(data.message || 'A fresh OTP was sent to your buyer notifications');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Could not generate a new delivery OTP');
+    } finally {
+      setRegeneratingOtp(false);
     }
   };
 
@@ -245,7 +260,15 @@ const Tracking = () => {
                     <StatusBadge status={delivery.status} />
                   </div>
                 )}
-                {delivery?.status === 'Assigned' && <p className="mt-2 text-xs text-gray-500">Your delivery OTP was sent in the buyer’s AgriConnect notifications. Share it with the courier at handoff.</p>}
+                {['Assigned', 'Picked Up', 'In Transit'].includes(delivery?.status) && (
+                  <div className="mt-4 rounded-xl border border-primary-100 bg-primary-50/70 p-3">
+                    <p className="text-xs leading-5 text-gray-600">Your current delivery OTP is in the notifications bell. Share it only with the assigned courier when your order arrives. A new code replaces the old one.</p>
+                    <button type="button" onClick={handleRegenerateOtp} disabled={regeneratingOtp} className="btn-secondary mt-3 !py-2 text-xs">
+                      <RotateCw className={`h-3.5 w-3.5 ${regeneratingOtp ? 'animate-spin' : ''}`} />
+                      {regeneratingOtp ? 'Generating…' : 'Generate a new OTP'}
+                    </button>
+                  </div>
+                )}
                 {delivery?.locationUpdatedAt && <p className="mt-2 text-xs text-blue-700">Courier GPS updated {formatDateTime(delivery.locationUpdatedAt)}</p>}
               </>
             ) : (

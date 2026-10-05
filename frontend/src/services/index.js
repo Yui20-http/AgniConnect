@@ -60,6 +60,7 @@ export const deliveryService = {
   getByOrder: (orderId) => api.get(`/deliveries/order/${orderId}`),
   assign: (orderId, deliveryPartnerId) => api.post('/deliveries/assign', { orderId, deliveryPartnerId }),
   updateStatus: (id, data) => api.put(`/deliveries/${id}/status`, data, data instanceof FormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined),
+  regenerateOtp: (id) => api.post(`/deliveries/${id}/otp`),
   updateLocation: (id, data) => api.post(`/deliveries/${id}/location`, data),
   stats: () => api.get('/deliveries/stats'),
 };

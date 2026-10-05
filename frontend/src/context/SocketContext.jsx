@@ -63,12 +63,14 @@ export const SocketProvider = ({ children }) => {
       setLastOrderUpdate((prev) => prev);
       toast.info(`Delivery status: ${delivery.status}`);
     };
+    const onNotificationsRefresh = () => loadNotifications();
 
     socket.on('notification:new', onNewNotification);
     socket.on('order:new', onOrderNew);
     socket.on('order:updated', onOrderUpdated);
     socket.on('delivery:assigned', onDeliveryAssigned);
     socket.on('delivery:updated', onDeliveryUpdated);
+    socket.on('notifications:refresh', onNotificationsRefresh);
 
     return () => {
       socket.off('notification:new', onNewNotification);
@@ -76,6 +78,7 @@ export const SocketProvider = ({ children }) => {
       socket.off('order:updated', onOrderUpdated);
       socket.off('delivery:assigned', onDeliveryAssigned);
       socket.off('delivery:updated', onDeliveryUpdated);
+      socket.off('notifications:refresh', onNotificationsRefresh);
     };
   }, [user, loadNotifications, toast]);
 

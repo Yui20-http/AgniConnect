@@ -6,7 +6,12 @@ const asyncHandler = require('../utils/asyncHandler');
 const { createNotification } = require('../utils/notify');
 const { emitToUser } = require('../utils/socket');
 const { DELIVERY_STATUS, ORDER_STATUS } = require('../config/constants');
-const { assignNearestCourier, assignSpecificCourier } = require('../utils/deliveryDispatch');
+const {
+  assignNearestCourier,
+  assignSpecificCourier,
+  issueDeliveryOtp,
+  DELIVERY_OTP_REISSUE_COOLDOWN_MS,
+} = require('../utils/deliveryDispatch');
 
 /**
  * @desc    Get deliveries for the logged-in delivery partner
@@ -169,7 +174,11 @@ const updateDeliveryStatus = asyncHandler(async (req, res) => {
   }
 
   if (status === DELIVERY_STATUS.DELIVERED) {
-    const receivedHash = crypto.createHash('sha256').update(String(otp || '')).digest();
+    if (!delivery.deliveryOtpHash || !delivery.deliveryOtpExpiresAt || delivery.deliveryOtpExpiresAt <= new Date()) {
+      res.status(400);
+      throw new Error('The buyer delivery OTP is missing or expired. Ask the buyer to generate a new code.');
+    }
+    const receivedHash = crypto.createHash('sha256').update(String(otp || '').trim()).digest();
     const expectedHash = Buffer.from(delivery.deliveryOtpHash || '', 'hex');
     if (expectedHash.length !== receivedHash.length || !crypto.timingSafeEqual(expectedHash, receivedHash)) {
       res.status(400);
@@ -186,6 +195,7 @@ const updateDeliveryStatus = asyncHandler(async (req, res) => {
       confirmedAt: new Date(),
     };
     delivery.deliveryOtpHash = '';
+    delivery.deliveryOtpExpiresAt = null;
   }
 
   delivery.status = status;
@@ -227,6 +237,40 @@ const updateDeliveryStatus = asyncHandler(async (req, res) => {
   }
 
   res.json({ success: true, message: `Delivery marked as ${status}`, data: delivery });
+});
+
+const regenerateDeliveryOtp = asyncHandler(async (req, res) => {
+  const delivery = await Delivery.findById(req.params.id).select('+deliveryOtpHash');
+  if (!delivery) {
+    res.status(404);
+    throw new Error('Delivery not found');
+  }
+  if (req.user.role !== 'buyer' || String(delivery.buyer) !== String(req.user._id)) {
+    res.status(403);
+    throw new Error('Only the buyer for this order can regenerate its delivery OTP');
+  }
+  if (!delivery.deliveryPartner || ![DELIVERY_STATUS.ASSIGNED, DELIVERY_STATUS.PICKED_UP, DELIVERY_STATUS.IN_TRANSIT].includes(delivery.status)) {
+    res.status(400);
+    throw new Error('A new OTP is available after a courier is assigned and before delivery is completed');
+  }
+  const waitMs = DELIVERY_OTP_REISSUE_COOLDOWN_MS - (Date.now() - new Date(delivery.deliveryOtpIssuedAt || 0).getTime());
+  if (waitMs > 0) {
+    res.setHeader('Retry-After', String(Math.ceil(waitMs / 1000)));
+    res.status(429);
+    throw new Error(`Please wait ${Math.ceil(waitMs / 1000)} seconds before generating another delivery OTP`);
+  }
+
+  const order = await Order.findById(delivery.order);
+  if (!order) {
+    res.status(404);
+    throw new Error('Order not found');
+  }
+  const result = await issueDeliveryOtp(delivery, order);
+  res.json({
+    success: true,
+    message: 'A new delivery OTP was added to your buyer notifications',
+    data: { issuedAt: result.issuedAt, expiresAt: result.expiresAt },
+  });
 });
 
 const updateDeliveryLocation = asyncHandler(async (req, res) => {
@@ -299,6 +343,7 @@ module.exports = {
   getDeliveryByOrder,
   assignDelivery,
   updateDeliveryStatus,
+  regenerateDeliveryOtp,
   updateDeliveryLocation,
   getDeliveryStats,
 };
