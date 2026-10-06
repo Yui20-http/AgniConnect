@@ -70,6 +70,9 @@ const userSchema = new mongoose.Schema(
     kycStatus: { type: String, enum: ['not_submitted', 'pending', 'verified', 'rejected'], default: 'not_submitted', index: true },
     kycDocumentType: { type: String, default: '' },
     kycLastFour: { type: String, default: '', maxlength: 4 },
+    kycSupportingDocumentType: { type: String, default: '' },
+    kycSupportingLastFour: { type: String, default: '', maxlength: 4 },
+    kycConsentAt: { type: Date, default: null },
     kycSubmittedAt: { type: Date, default: null },
     kycReviewedAt: { type: Date, default: null },
     kycReviewNote: { type: String, default: '', maxlength: 500 },
@@ -123,6 +126,8 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
+  delete obj.resetPasswordToken;
+  delete obj.resetPasswordExpires;
   return obj;
 };
 

@@ -44,4 +44,13 @@ const authorize = (...roles) => {
   };
 };
 
-module.exports = { protect, authorize };
+const requireVerifiedKyc = (req, res, next) => {
+  if (!req.user || req.user.role === 'admin' || req.user.kycStatus === 'verified') return next();
+  return res.status(403).json({
+    success: false,
+    code: 'KYC_REQUIRED',
+    message: 'Complete account verification from your profile before using this feature.',
+  });
+};
+
+module.exports = { protect, authorize, requireVerifiedKyc };

@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Wishlist = require('../models/Wishlist');
 const asyncHandler = require('../utils/asyncHandler');
+const { recordAudit } = require('../utils/auditLog');
 
 /**
  * @desc    Update the logged-in user's profile
@@ -78,25 +79,61 @@ const getFarmerProfile = asyncHandler(async (req, res) => {
   res.json({ success: true, data: farmer });
 });
 
-const submitFarmerKyc = asyncHandler(async (req, res) => {
-  const { documentType, lastFour } = req.body || {};
-  if (!documentType || !lastFour || !/^\d{4}$/.test(String(lastFour))) {
+const submitKyc = asyncHandler(async (req, res) => {
+  const { documentType, lastFour, supportingDocumentType, supportingLastFour, consent } = req.body || {};
+  const role = req.user.role;
+  const identityTypes = ['Aadhaar', 'Voter ID', 'Driving Licence', 'Passport', 'Other government ID'];
+  const supportingTypesByRole = {
+    farmer: ['Land record', 'Lease agreement', 'FPO registration', 'Other farm document'],
+    buyer: ['Utility bill', 'Bank statement', 'Ration card', 'Other address document'],
+    delivery: ['Vehicle registration certificate', 'Commercial permit', 'Other vehicle document'],
+  };
+
+  if (!supportingTypesByRole[role]) {
+    res.status(403);
+    throw new Error('KYC is available for farmer, buyer, and delivery accounts');
+  }
+  if (!identityTypes.includes(documentType) || !/^[A-Za-z0-9]{4}$/.test(String(lastFour || ''))) {
     res.status(400);
-    throw new Error('Choose an identity document type and enter its last four digits');
+    throw new Error('Choose a valid identity document and enter only its last four characters');
   }
-  const farmer = await User.findOne({ _id: req.user._id, role: 'farmer' });
-  if (!farmer) {
-    res.status(404);
-    throw new Error('Farmer account not found');
+  if (!supportingTypesByRole[role].includes(supportingDocumentType) || !/^[A-Za-z0-9]{4}$/.test(String(supportingLastFour || ''))) {
+    res.status(400);
+    throw new Error('Choose the required supporting document and enter only its last four characters');
   }
-  farmer.kycDocumentType = String(documentType).slice(0, 40);
-  farmer.kycLastFour = String(lastFour);
-  farmer.kycStatus = 'pending';
-  farmer.kycSubmittedAt = new Date();
-  farmer.kycReviewedAt = null;
-  farmer.kycReviewNote = '';
-  await farmer.save();
-  res.json({ success: true, message: 'Verification request submitted for admin review', data: farmer });
+  if (consent !== true) {
+    res.status(400);
+    throw new Error('Confirm that the information is accurate before submitting');
+  }
+  if (!req.user.address?.trim() || !req.user.location?.trim()) {
+    res.status(400);
+    throw new Error('Complete your address and location in your profile before submitting KYC');
+  }
+  if (role === 'farmer' && (!req.user.farmName?.trim() || !req.user.farmLocation?.trim())) {
+    res.status(400);
+    throw new Error('Complete your farm name and location in your profile before submitting KYC');
+  }
+  if (role === 'delivery' && (!req.user.vehicleType?.trim() || !req.user.vehicleNumber?.trim())) {
+    res.status(400);
+    throw new Error('Complete your vehicle type and registration number in your profile before submitting KYC');
+  }
+  if (req.user.kycStatus === 'verified') {
+    res.status(409);
+    throw new Error('Your account is already verified. Contact support if your details have changed.');
+  }
+
+  req.user.kycDocumentType = documentType;
+  req.user.kycLastFour = String(lastFour).toUpperCase();
+  req.user.kycSupportingDocumentType = supportingDocumentType;
+  req.user.kycSupportingLastFour = String(supportingLastFour).toUpperCase();
+  req.user.kycConsentAt = new Date();
+  req.user.kycStatus = 'pending';
+  req.user.kycSubmittedAt = new Date();
+  req.user.kycReviewedAt = null;
+  req.user.kycReviewNote = '';
+  const updated = await req.user.save();
+  recordAudit(req, `${role}.kyc.submitted`, 'User', updated._id, `Document types: ${documentType}, ${supportingDocumentType}`);
+  res.json({ success: true, message: 'Verification request submitted for admin review', data: updated });
 });
 
 const getFeaturedFarmers = asyncHandler(async (_req, res) => {
@@ -113,7 +150,7 @@ const getFeaturedFarmers = asyncHandler(async (_req, res) => {
  * @access  Private
  */
 const getDeliveryPartners = asyncHandler(async (req, res) => {
-  const partners = await User.find({ role: 'delivery', isActive: true, isAvailable: true }).select(
+  const partners = await User.find({ role: 'delivery', isActive: true, isAvailable: true, kycStatus: 'verified' }).select(
     'name email phone vehicleType vehicleNumber isAvailable isActive location'
   );
   res.json({ success: true, data: partners });
@@ -151,7 +188,7 @@ const getFavoriteFarmers = asyncHandler(async (req, res) => {
 module.exports = {
   updateProfile,
   getFarmerProfile,
-  submitFarmerKyc,
+  submitKyc,
   getFeaturedFarmers,
   getDeliveryPartners,
   toggleFavoriteFarmer,

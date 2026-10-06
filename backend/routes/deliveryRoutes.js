@@ -10,18 +10,18 @@ const {
   updateDeliveryLocation,
   getDeliveryStats,
 } = require('../controllers/deliveryController');
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, authorize, requireVerifiedKyc } = require('../middleware/authMiddleware');
 const { uploadSingle } = require('../middleware/uploadMiddleware');
 
 router.use(protect);
 
-router.get('/my', authorize('delivery'), getMyDeliveries);
-router.get('/stats', authorize('delivery'), getDeliveryStats);
+router.get('/my', authorize('delivery'), requireVerifiedKyc, getMyDeliveries);
+router.get('/stats', authorize('delivery'), requireVerifiedKyc, getDeliveryStats);
 router.get('/', authorize('admin'), getAllDeliveries);
 router.post('/assign', protect, assignDelivery);
 router.get('/order/:orderId', getDeliveryByOrder);
 router.post('/:id/otp', authorize('buyer'), regenerateDeliveryOtp);
-router.put('/:id/status', authorize('delivery', 'admin'), uploadSingle('proofPhoto', 'agriconnect/delivery-proofs'), updateDeliveryStatus);
-router.post('/:id/location', authorize('delivery', 'admin'), updateDeliveryLocation);
+router.put('/:id/status', authorize('delivery', 'admin'), requireVerifiedKyc, uploadSingle('proofPhoto', 'agriconnect/delivery-proofs'), updateDeliveryStatus);
+router.post('/:id/location', authorize('delivery', 'admin'), requireVerifiedKyc, updateDeliveryLocation);
 
 module.exports = router;

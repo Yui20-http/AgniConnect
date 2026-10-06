@@ -1,5 +1,5 @@
 import ProfileForm from '../../components/ProfileForm';
-import FarmerKycForm from '../../components/FarmerKycForm';
+import KycVerificationForm from '../../components/KycVerificationForm';
 
 /**
  * FarmerProfile - farmer account details + farm information.
@@ -29,7 +29,7 @@ const FarmerProfile = () => (
       { key: 'upiId', label: 'UPI ID for Payouts', placeholder: 'e.g. patil.farm@upi', required: true },
     ]}
   />
-  <FarmerKycForm />
+  <KycVerificationForm />
   </div>
 );
 

@@ -4,6 +4,7 @@ const Order = require('../models/Order');
 const Delivery = require('../models/Delivery');
 const AuditLog = require('../models/AuditLog');
 const asyncHandler = require('../utils/asyncHandler');
+const { createNotification } = require('../utils/notify');
 const { ORDER_STATUS, DELIVERY_STATUS } = require('../config/constants');
 const { recordAudit } = require('../utils/auditLog');
 
@@ -57,9 +58,12 @@ const getStats = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const getUsers = asyncHandler(async (req, res) => {
-  const { role, search } = req.query;
+  const { role, search, kycStatus } = req.query;
   const query = {};
   if (role && role !== 'All') query.role = role;
+  if (kycStatus && kycStatus !== 'All') {
+    query.kycStatus = kycStatus === 'not_submitted' ? { $in: ['not_submitted', null] } : kycStatus;
+  }
   if (search) {
     query.$or = [
       { name: { $regex: search, $options: 'i' } },
@@ -112,27 +116,43 @@ const deleteUser = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'User deleted' });
 });
 
-const reviewFarmerKyc = asyncHandler(async (req, res) => {
+const reviewUserKyc = asyncHandler(async (req, res) => {
   const { status, note = '' } = req.body || {};
   if (!['verified', 'rejected'].includes(status)) {
     res.status(400);
     throw new Error('KYC review status must be verified or rejected');
   }
-  const farmer = await User.findOne({ _id: req.params.id, role: 'farmer' });
-  if (!farmer) {
-    res.status(404);
-    throw new Error('Farmer not found');
-  }
-  if (status === 'verified' && !farmer.kycSubmittedAt) {
+  if (status === 'rejected' && !String(note).trim()) {
     res.status(400);
-    throw new Error('Farmer has not submitted a verification request');
+    throw new Error('Add a reason so the user can correct and resubmit their verification');
   }
-  farmer.kycStatus = status;
-  farmer.kycReviewedAt = new Date();
-  farmer.kycReviewNote = String(note).slice(0, 500);
-  await farmer.save();
-  recordAudit(req, `farmer.kyc.${status}`, 'User', farmer._id, farmer.kycReviewNote);
-  res.json({ success: true, message: `Farmer KYC ${status}`, data: farmer });
+  const user = await User.findOne({ _id: req.params.id, role: { $in: ['farmer', 'buyer', 'delivery'] } });
+  if (!user) {
+    res.status(404);
+    throw new Error('Eligible KYC account not found');
+  }
+  if (!user.kycSubmittedAt || user.kycStatus !== 'pending') {
+    res.status(400);
+    throw new Error('This account has no pending verification request');
+  }
+  if (status === 'verified' && (!user.kycDocumentType || !user.kycLastFour || !user.kycSupportingDocumentType || !user.kycSupportingLastFour || !user.kycConsentAt)) {
+    res.status(400);
+    throw new Error('This request is missing the required KYC details. Ask the user to resubmit their information.');
+  }
+  user.kycStatus = status;
+  user.kycReviewedAt = new Date();
+  user.kycReviewNote = String(note).trim().slice(0, 500);
+  await user.save();
+  recordAudit(req, `${user.role}.kyc.${status}`, 'User', user._id, user.kycReviewNote);
+  await createNotification({
+    user: user._id,
+    title: status === 'verified' ? 'Account verification approved' : 'Verification needs an update',
+    message: status === 'verified' ? 'Your account is verified and eligible for role-specific marketplace features.' : user.kycReviewNote,
+    type: 'system',
+    link: `/${user.role}/profile`,
+    meta: { kind: 'kyc_review', status },
+  });
+  res.json({ success: true, message: `${user.role} KYC ${status}`, data: user });
 });
 
 const toggleFeaturedFarmer = asyncHandler(async (req, res) => {
@@ -244,5 +264,5 @@ const getCharts = asyncHandler(async (req, res) => {
 
 module.exports = {
   getStats, getUsers, toggleUserStatus, deleteUser, getCharts,
-  reviewFarmerKyc, toggleFeaturedFarmer, getAuditLogs, exportOrdersCsv,
+  reviewUserKyc, toggleFeaturedFarmer, getAuditLogs, exportOrdersCsv,
 };

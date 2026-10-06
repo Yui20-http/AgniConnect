@@ -9,11 +9,11 @@ const {
   getFarmerStats,
   getBuyerStats,
 } = require('../controllers/orderController');
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, authorize, requireVerifiedKyc } = require('../middleware/authMiddleware');
 
 router.use(protect);
 
-router.post('/', authorize('buyer'), createOrder);
+router.post('/', authorize('buyer'), requireVerifiedKyc, createOrder);
 router.get('/', getOrders);
 router.get('/farmer/stats', authorize('farmer'), getFarmerStats);
 router.get('/buyer/stats', authorize('buyer'), getBuyerStats);

@@ -24,13 +24,17 @@ const AdminUsers = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState('All');
+  const [kycStatus, setKycStatus] = useState('All');
   const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [kycTarget, setKycTarget] = useState(null);
+  const [kycDecision, setKycDecision] = useState('verified');
+  const [kycNote, setKycNote] = useState('');
 
   const load = async () => {
     try {
       setLoading(true);
-      const { data } = await adminService.users({ role, search });
+      const { data } = await adminService.users({ role, search, kycStatus });
       setUsers(data.data);
     } catch (err) {
       toast.error('Could not load users');
@@ -43,7 +47,7 @@ const AdminUsers = () => {
     const t = setTimeout(load, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, search]);
+  }, [role, search, kycStatus]);
 
   const toggle = async (user) => {
     try {
@@ -67,12 +71,20 @@ const AdminUsers = () => {
   };
 
   const reviewKyc = async (user, status) => {
+    setKycTarget(user);
+    setKycDecision(status);
+    setKycNote('');
+  };
+
+  const submitKycReview = async (event) => {
+    event.preventDefault();
     try {
-      await adminService.reviewKyc(user._id, { status });
-      toast.success(status === 'verified' ? 'Farmer verified; listings are enabled' : 'Farmer verification rejected');
+      await adminService.reviewKyc(kycTarget._id, { status: kycDecision, note: kycNote.trim() });
+      toast.success(`${kycTarget.role} verification ${kycDecision}`);
+      setKycTarget(null);
       load();
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Could not review farmer verification');
+      toast.error(err?.response?.data?.message || 'Could not review verification');
     }
   };
 
@@ -113,6 +125,13 @@ const AdminUsers = () => {
               ))}
             </select>
           </div>
+          <select value={kycStatus} onChange={(event) => setKycStatus(event.target.value)} className="input !py-2 sm:w-40" aria-label="Filter by verification status">
+            <option value="All">All KYC statuses</option>
+            <option value="pending">Pending review</option>
+            <option value="verified">Verified</option>
+            <option value="rejected">Needs resubmission</option>
+            <option value="not_submitted">Not submitted</option>
+          </select>
         </div>
       </div>
 
@@ -165,7 +184,7 @@ const AdminUsers = () => {
                       >
                         {u.isActive ? 'Active' : 'Inactive'}
                       </span>
-                      {u.role === 'farmer' && <span className={`badge ml-1 ${u.kycStatus === 'verified' ? 'bg-green-100 text-green-700' : u.kycStatus === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{u.kycStatus || 'not_submitted'}</span>}
+                      {u.role !== 'admin' && <span className={`badge ml-1 capitalize ${u.kycStatus === 'verified' ? 'bg-green-100 text-green-700' : u.kycStatus === 'pending' ? 'bg-amber-100 text-amber-700' : u.kycStatus === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>KYC: {(u.kycStatus || 'not_submitted').replace('_', ' ')}</span>}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
@@ -191,10 +210,10 @@ const AdminUsers = () => {
                             </button>
                           </>
                         )}
-                        {u.role === 'farmer' && u.kycStatus === 'pending' && (
+                        {u.role !== 'admin' && u.kycStatus === 'pending' && (
                           <>
-                            <button onClick={() => reviewKyc(u, 'verified')} className="p-2 rounded-lg text-green-700 hover:bg-green-50" title={`Verify ${u.kycDocumentType || 'identity'} ending ${u.kycLastFour || 'unknown'}`}><ShieldCheck className="w-4 h-4" /></button>
-                            <button onClick={() => reviewKyc(u, 'rejected')} className="p-2 rounded-lg text-red-600 hover:bg-red-50" title="Reject verification"><ShieldX className="w-4 h-4" /></button>
+                            <button onClick={() => reviewKyc(u, 'verified')} className="p-2 rounded-lg text-green-700 hover:bg-green-50" aria-label={`Review ${u.role} verification`} title="Review verification"><ShieldCheck className="w-4 h-4" /></button>
+                            <button onClick={() => reviewKyc(u, 'rejected')} className="p-2 rounded-lg text-red-600 hover:bg-red-50" aria-label={`Reject ${u.role} verification`} title="Reject verification"><ShieldX className="w-4 h-4" /></button>
                           </>
                         )}
                         {u.role === 'farmer' && u.kycStatus === 'verified' && <button onClick={() => toggleFeatured(u)} className={`p-2 rounded-lg ${u.isFeatured ? 'text-amber-600 bg-amber-50' : 'text-gray-400 hover:bg-amber-50 hover:text-amber-600'}`} title={u.isFeatured ? 'Remove from featured farmers' : 'Feature this farmer'}><Star className={`w-4 h-4 ${u.isFeatured ? 'fill-current' : ''}`} /></button>}
@@ -220,6 +239,24 @@ const AdminUsers = () => {
             Delete
           </button>
         </div>
+      </Modal>
+
+      <Modal isOpen={!!kycTarget} onClose={() => setKycTarget(null)} title="Review account verification" size="lg">
+        {kycTarget && <form onSubmit={submitKycReview} className="space-y-5">
+          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+            <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-gray-900">{kycTarget.name}</p><p className="text-sm text-gray-500">{kycTarget.email} · {kycTarget.phone}</p></div><span className={`badge capitalize ${roleColors[kycTarget.role]}`}>{kycTarget.role}</span></div>
+            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+              <p><span className="text-gray-500">Identity:</span> {kycTarget.kycDocumentType} ending {kycTarget.kycLastFour}</p>
+              <p><span className="text-gray-500">Supporting proof:</span> {kycTarget.kycSupportingDocumentType} ending {kycTarget.kycSupportingLastFour}</p>
+              <p><span className="text-gray-500">Address:</span> {kycTarget.address}, {kycTarget.location}</p>
+              {kycTarget.role === 'farmer' && <p><span className="text-gray-500">Farm:</span> {kycTarget.farmName} · {kycTarget.farmLocation}</p>}
+              {kycTarget.role === 'delivery' && <p><span className="text-gray-500">Vehicle:</span> {kycTarget.vehicleType} · {kycTarget.vehicleNumber}</p>}
+              <p className="text-xs text-gray-500 sm:col-span-2">Submitted {kycTarget.kycSubmittedAt ? formatDate(kycTarget.kycSubmittedAt) : '—'}. Only masked number endings are stored; verify details through your established manual process.</p>
+            </div>
+          </div>
+          <label className="block"><span className="label">Reviewer note {kycDecision === 'rejected' ? '(required)' : '(optional)'}</span><textarea className="input min-h-24" maxLength={500} required={kycDecision === 'rejected'} value={kycNote} onChange={(event) => setKycNote(event.target.value)} placeholder={kycDecision === 'rejected' ? 'Explain what the user needs to correct before resubmitting.' : 'Optional note for the audit history.'} /></label>
+          <div className="flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={() => setKycTarget(null)}>Cancel</button><button type="submit" className={kycDecision === 'verified' ? 'btn-primary' : 'btn bg-red-600 text-white hover:bg-red-700'}>{kycDecision === 'verified' ? 'Approve verification' : 'Reject with reason'}</button></div>
+        </form>}
       </Modal>
     </div>
   );

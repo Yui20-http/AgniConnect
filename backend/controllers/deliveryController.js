@@ -130,7 +130,7 @@ const assignDelivery = asyncHandler(async (req, res) => {
     return res.json({ success: true, message: 'Nearest available delivery partner assigned', data: delivery });
   }
 
-  const partner = await User.findOne({ _id: deliveryPartnerId, role: 'delivery', isActive: true, isAvailable: true });
+  const partner = await User.findOne({ _id: deliveryPartnerId, role: 'delivery', isActive: true, isAvailable: true, kycStatus: 'verified' });
   if (!partner) {
     res.status(404);
     throw new Error('No available delivery partner matches this selection');

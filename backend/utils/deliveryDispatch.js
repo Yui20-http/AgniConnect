@@ -70,7 +70,7 @@ const coordinatesForPartner = (partner) => {
 
 const claimAndAssign = async ({ order, delivery, partner }) => {
   const claimedPartner = await User.findOneAndUpdate(
-    { _id: partner._id, role: 'delivery', isActive: true, isAvailable: true },
+    { _id: partner._id, role: 'delivery', isActive: true, isAvailable: true, kycStatus: 'verified' },
     { $set: { isAvailable: false } },
     { new: true }
   );
@@ -105,7 +105,7 @@ const assignNearestCourier = async (order, delivery) => {
   const pickup = delivery.coordinates?.pickup?.lat != null && delivery.coordinates?.pickup?.lng != null
     ? delivery.coordinates.pickup
     : geocodeLocation(delivery.pickupLocation || order.pickupLocation || '');
-  const candidates = await User.find({ role: 'delivery', isActive: true, isAvailable: true })
+  const candidates = await User.find({ role: 'delivery', isActive: true, isAvailable: true, kycStatus: 'verified' })
     .select('_id name location courierLocation isAvailable vehicleType vehicleNumber')
     .lean();
   if (!candidates.length) return null;
