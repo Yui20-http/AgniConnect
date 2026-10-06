@@ -29,6 +29,7 @@ This project was built as a **TYBScIT CEP (College Final-Year) project** and is 
 13. [Testing the Full Workflow](#13-testing-the-full-workflow)
 14. [Environment Variables](#14-environment-variables)
 15. [Troubleshooting & FAQ](#15-troubleshooting--faq)
+16. [Deployment guide](docs/deployment.md)
 
 ---
 

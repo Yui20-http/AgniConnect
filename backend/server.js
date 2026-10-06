@@ -29,11 +29,6 @@ const analyticsRoutes = require('./routes/analyticsRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const { processDueSubscriptions } = require('./controllers/subscriptionController');
 
-// Connect to MongoDB
-connectDB().then(() => {
-  setInterval(processDueSubscriptions, 60 * 1000);
-});
-
 const app = express();
 const server = http.createServer(app);
 
@@ -96,15 +91,31 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/reports', reportRoutes);
 
+// In production, serve the Vite build from the same origin as the API. This
+// keeps API requests and Socket.IO on one host and supports client-side routes.
+const frontendBuildPath = path.join(__dirname, '..', 'frontend', 'dist');
+app.use(express.static(frontendBuildPath));
+app.get('*', (req, res, next) => {
+  if (req.path === '/api' || req.path.startsWith('/api/')) return next();
+  res.sendFile(path.join(frontendBuildPath, 'index.html'), (error) => {
+    if (error) next(error);
+  });
+});
+
 // ---------- Error handling ----------
 app.use(notFound);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`🚀 AgriConnect backend running on http://localhost:${PORT}`);
-  console.log(`🌐 CORS allowed origin: ${process.env.CLIENT_URL || 'http://localhost:5173'}`);
-});
+const startServer = async () => {
+  await connectDB();
+  setInterval(processDueSubscriptions, 60 * 1000);
+  server.listen(PORT, () => {
+    console.log(`🚀 AgriConnect backend running on http://localhost:${PORT}`);
+    console.log(`🌐 CORS allowed origin: ${process.env.CLIENT_URL || 'http://localhost:5173'}`);
+  });
+};
+startServer();
 
 // Handle unhandled promise rejections gracefully.
 process.on('unhandledRejection', (err) => {
