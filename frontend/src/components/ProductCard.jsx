@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, ShoppingCart, Eye, Star } from 'lucide-react';
+import { MapPin, ShoppingCart, Eye, Star, Sprout } from 'lucide-react';
 import { formatCurrency, categoryIcons } from '../utils/helpers';
 import { useCart } from '../context/CartContext';
 import { useToast } from '../context/ToastContext';
@@ -9,6 +10,7 @@ import { useAuth } from '../context/useAuth';
  * ProductCard - used in the marketplace grid and on the landing page.
  */
 const ProductCard = ({ product, onAddToCart }) => {
+  const [imageFailed, setImageFailed] = useState(false);
   const { user } = useAuth();
   const { addToCart } = useCart();
   const { toast } = useToast();
@@ -39,10 +41,15 @@ const ProductCard = ({ product, onAddToCart }) => {
     <article data-reveal className="tilt-card product-card group flex flex-col overflow-hidden rounded-[1.35rem] border border-[#e4e9df] bg-white transition duration-300 hover:border-[#c7d8bd] hover:shadow-[0_24px_55px_-35px_rgba(23,59,40,.45)]">
       <Link to={`/product/${product._id}`} className="relative block">
         <div className="product-image relative h-52 overflow-hidden bg-[#f0f3ed] sm:h-56">
-          {product.image ? (
-            <img src={product.image} alt={product.name} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
+          {product.image && !imageFailed ? (
+            <img src={product.image} alt={product.name} onError={() => setImageFailed(true)} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
           ) : (
-            <span className="text-6xl">{categoryIcons[product.category] || '🌱'}</span>
+            <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-[#eef5e8] via-[#e3efdc] to-[#d5e7ce] text-[#4d8555]">
+              <div className="flex flex-col items-center gap-2">
+                <Sprout aria-hidden="true" className="h-12 w-12 opacity-75" strokeWidth={1.4} />
+                <span className="text-xs font-semibold uppercase tracking-[.16em] text-[#65816a]">{product.category || 'Fresh produce'}</span>
+              </div>
+            </div>
           )}
         </div>
         <div className="product-image-sheen pointer-events-none absolute inset-x-0 top-0 h-56 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
